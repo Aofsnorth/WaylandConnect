@@ -1,0 +1,10 @@
+{
+  "devices": {
+    "d9b4c7c2-c773-4297-92e1-d265c7ca9c90": {
+      "id": "d9b4c7c2-c773-4297-92e1-d265c7ca9c90",
+      "name": "realme RMX5061",
+      "status": "Trusted",
+      "ip": "192.168.1.3"
+    }
+  }
+}

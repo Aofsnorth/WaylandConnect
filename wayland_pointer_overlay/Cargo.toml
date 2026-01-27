@@ -1,0 +1,10 @@
+[package]
+name = "wayland_pointer_overlay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gtk4 = "0.8"
+gtk4-layer-shell = "0.3"
+cairo-rs = "0.19"
+glib = "0.19"

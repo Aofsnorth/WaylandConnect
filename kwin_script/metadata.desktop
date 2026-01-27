@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=WaylandConnect Adapter
+Comment=Adapter for WaylandConnect Remote Controller
+Icon=preferences-system-windows-script-test
+Type=Service
+X-Plasma-API=javascript
+X-Plasma-MainScript=code/main.js
+X-KDE-PluginInfo-Author=Antigravity
+X-KDE-PluginInfo-Email=
+X-KDE-PluginInfo-Name=waylandconnect-adapter
+X-KDE-PluginInfo-Version=0.1
+X-KDE-PluginInfo-Website=
+X-KDE-PluginInfo-Category=Window Management
+X-KDE-PluginInfo-Depends=
+X-KDE-PluginInfo-License=GPL
+X-KDE-ServiceTypes=KWin/Script

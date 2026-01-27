@@ -1,0 +1,19 @@
+[package]
+name = "wayland_connect_backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zbus = "3.14" # Using stable version suitable for DBus signals
+futures = "0.3"
+log = "0.4"
+env_logger = "0.10"
+anyhow = "1.0"
+async-trait = "0.1.89"
+input-linux = "0.7.1"
+libc = "0.2.180"
+notify-rust = "4.11.7"
+lazy_static = "1.5.0"

@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Antigravity"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Adapter for WaylandConnect Remote Controller",
+        "EnabledByDefault": true,
+        "Icon": "preferences-system-windows-script-test",
+        "Id": "waylandconnect-adapter",
+        "License": "GPL",
+        "Name": "WaylandConnect Adapter",
+        "Version": "0.1"
+    }
+}
