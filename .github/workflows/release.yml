@@ -51,7 +51,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libgtk-4-dev liblzma-dev libstdc++-12-dev libwayland-dev libxkbcommon-dev libgtk4-layer-shell-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libgtk-4-dev liblzma-dev libstdc++-12-dev libwayland-dev libxkbcommon-dev libgtk4-layer-shell-dev libfuse2
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -121,7 +121,7 @@ jobs:
         run: |
           wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
           chmod +x appimagetool
-          ./appimagetool AppDir Wayland_Connect-x86_64.AppImage
+          ./appimagetool --appimage-extract-and-run AppDir Wayland_Connect-x86_64.AppImage
 
       - name: Package Linux (Tarball backup)
         run: |
