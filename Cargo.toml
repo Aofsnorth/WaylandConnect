@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "rust_backend",
+    "wayland_pointer_overlay"
+]
+resolver = "2"
