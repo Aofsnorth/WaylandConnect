@@ -74,19 +74,66 @@ jobs:
           cd wayland_connect_desktop
           flutter build linux --release
 
-      - name: Package Linux (Bundle)
+      - name: Create AppDir for AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+          
+          # Copy Flutter Bundle (Binary, Libs, Data)
+          # Flutter expects lib/ and data/ next to the binary
+          cp wayland_connect_desktop/build/linux/x64/release/bundle/wayland_connect_desktop AppDir/usr/bin/
+          cp -r wayland_connect_desktop/build/linux/x64/release/bundle/lib AppDir/usr/bin/
+          cp -r wayland_connect_desktop/build/linux/x64/release/bundle/data AppDir/usr/bin/
+          
+          # Copy Backend & Overlay
+          cp rust_backend/target/release/wayland_connect_backend AppDir/usr/bin/
+          cp wayland_pointer_overlay/target/release/wayland_pointer_overlay AppDir/usr/bin/
+          
+          # Copy Desktop Entry & Icon
+          cp wayland_connect_desktop/assets/images/app_icon.png AppDir/usr/share/icons/hicolor/512x512/apps/wayland-connect.png
+          cp AppDir/usr/share/icons/hicolor/512x512/apps/wayland-connect.png AppDir/wayland-connect.png
+          
+          cat > AppDir/usr/share/applications/wayland-connect.desktop << EOF
+          [Desktop Entry]
+          Name=Wayland Connect
+          Exec=wayland_connect_desktop
+          Icon=wayland-connect
+          Type=Application
+          Categories=Utility;
+          EOF
+          cp AppDir/usr/share/applications/wayland-connect.desktop AppDir/
+          
+          # Create AppRun script
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/bin/lib:${LD_LIBRARY_PATH}"
+          exec "${HERE}/usr/bin/wayland_connect_desktop" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+      - name: Generate AppImage
+        run: |
+          wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ./appimagetool AppDir Wayland_Connect-x86_64.AppImage
+
+      - name: Package Linux (Tarball backup)
         run: |
           mkdir -p release_bundle/bin
-          cp rust_backend/target/release/wayland_connect_backend release_bundle/bin/
-          cp wayland_pointer_overlay/target/release/wayland_pointer_overlay release_bundle/bin/
-          cp -r wayland_connect_desktop/build/linux/x64/release/bundle/* release_bundle/bin/
+          cp -r AppDir/usr/bin/* release_bundle/bin/
           cd release_bundle && tar -czvf ../wayland-connect-linux-x64.tar.gz .
 
-      - name: Upload Linux Artifact
+      - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: wayland-connect-linux
-          path: wayland-connect-linux-x64.tar.gz
+          path: |
+            Wayland_Connect-x86_64.AppImage
+            wayland-connect-linux-x64.tar.gz
 
   create-release:
     name: Create GitHub Release
@@ -102,6 +149,7 @@ jobs:
         with:
           files: |
             wayland-connect-apk/app-release.apk
+            wayland-connect-linux/Wayland_Connect-x86_64.AppImage
             wayland-connect-linux/wayland-connect-linux-x64.tar.gz
           name: Release ${{ github.ref_name }}
           draft: false
