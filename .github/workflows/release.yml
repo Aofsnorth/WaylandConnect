@@ -118,6 +118,8 @@ jobs:
           chmod +x AppDir/AppRun
 
       - name: Generate AppImage
+        env:
+          ARCH: x86_64
         run: |
           wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
           chmod +x appimagetool
