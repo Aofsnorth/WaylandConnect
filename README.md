@@ -1,5 +1,10 @@
 # 🚀 Wayland Connect
 
+[![Release](https://img.shields.io/github/v/release/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)](https://github.com/Aofsnorth/WaylandConnect/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Aofsnorth/WaylandConnect/release.yml?style=for-the-badge)](https://github.com/Aofsnorth/WaylandConnect/actions)
+[![License](https://img.shields.io/github/license/Aofsnorth/WaylandConnect?style=for-the-badge&color=green)](LICENSE)
+
+
 [English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia)
 
 ---

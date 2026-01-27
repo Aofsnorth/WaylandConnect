@@ -70,16 +70,10 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Build Rust Backend
+      - name: Build Rust Workspace
         run: |
-          cd rust_backend
-          cargo build --release
-          
-      - name: Build Wayland Overlay
-        run: |
-          cd wayland_pointer_overlay
-          cargo build --release
-          
+          cargo build --release --workspace
+
       - name: Build Flutter Desktop
         run: |
           cd wayland_connect_desktop
@@ -98,9 +92,9 @@ jobs:
           cp -r wayland_connect_desktop/build/linux/x64/release/bundle/lib AppDir/usr/bin/
           cp -r wayland_connect_desktop/build/linux/x64/release/bundle/data AppDir/usr/bin/
           
-          # Copy Backend & Overlay
-          cp rust_backend/target/release/wayland_connect_backend AppDir/usr/bin/
-          cp wayland_pointer_overlay/target/release/wayland_pointer_overlay AppDir/usr/bin/
+          # Copy Backend & Overlay (From Root Target Dir)
+          cp target/release/wayland_connect_backend AppDir/usr/bin/
+          cp target/release/wayland_pointer_overlay AppDir/usr/bin/
           
           # Copy Desktop Entry & Icon
           cp wayland_connect_desktop/assets/images/app_icon.png AppDir/usr/share/icons/hicolor/512x512/apps/wayland-connect.png
