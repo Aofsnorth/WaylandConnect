@@ -11,16 +11,22 @@ use crate::server::InputServer;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    // Initialize Logger to File
+    use std::fs::OpenOptions;
+    let log_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open("/tmp/wayland_connect_backend.log")
+        .unwrap();
     
-    // Custom panic hook to catch crashes
-    std::panic::set_hook(Box::new(|info| {
-        eprintln!("🔥 CRITICAL BACKEND PANIC: {:?}", info);
-        if let Some(s) = info.payload().downcast_ref::<&str>() {
-            eprintln!("Panic payload: {}", s);
-        }
-    }));
+    let target = env_logger::Target::Pipe(Box::new(log_file));
+    env_logger::Builder::from_default_env()
+        .target(target)
+        .filter_level(log::LevelFilter::Info)
+        .init();
 
+    info!("----------------------------------------------------------------");
     info!("Starting WaylandConnect Backend (uinput mode)...");
 
     // 1. Initialize UInput Adapter (Create Virtual Mouse)

@@ -72,7 +72,7 @@ sudo tee /usr/share/applications/wayland-connect.desktop > /dev/null << EOF
 Name=Wayland Connect
 Comment=Control Wayland from your Android device
 Exec=$OPT_DIR/bin/wayland_connect_desktop
-Icon=$OPT_DIR/bin/data/flutter_assets/assets/icon.png
+Icon=$OPT_DIR/bin/data/flutter_assets/assets/images/app_icon.png
 Terminal=false
 Type=Application
 Categories=Utility;RemoteAccess;

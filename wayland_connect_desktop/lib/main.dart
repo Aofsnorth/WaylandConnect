@@ -196,7 +196,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
   Future<void> _initSystemTray() async {
     String iconPath = await _getIconPath();
     debugPrint("TRAY_ICON_PATH: $iconPath");
-    if (iconPath.isNotEmpty) await trayManager.setIcon(iconPath);
+    if (iconPath.isNotEmpty) {
+       await trayManager.setIcon(iconPath);
+       await windowManager.setIcon(iconPath); // Set taskbar icon
+    }
     
     Menu menu = Menu(
       items: [
@@ -263,19 +266,24 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
        final prefs = await SharedPreferences.getInstance();
        await prefs.setString('service_port', port.toString());
        
-       // Detect Path (Checking debug then release as fallback)
-       String backendPath = '../rust_backend/target/release/wayland_connect_backend';
-       String overlayPath = '../wayland_pointer_overlay/target/release/wayland_pointer_overlay';
-       
-       if (!File(backendPath).existsSync()) {
-          backendPath = '../rust_backend/target/debug/wayland_connect_backend';
-          overlayPath = '../wayland_pointer_overlay/target/debug/wayland_pointer_overlay';
-       }
+       // Detect Path (Checking production first, then debug)
+       String backendPath = '/opt/wayland-connect/bin/wayland_connect_backend';
+       String overlayPath = '/opt/wayland-connect/bin/wayland_pointer_overlay';
 
-       // Final fallback if running from root
        if (!File(backendPath).existsSync()) {
-          backendPath = 'rust_backend/target/release/wayland_connect_backend';
-          overlayPath = 'wayland_pointer_overlay/target/release/wayland_pointer_overlay';
+          // Fallbacks for local dev
+          backendPath = '../rust_backend/target/release/wayland_connect_backend';
+          overlayPath = '../wayland_pointer_overlay/target/release/wayland_pointer_overlay';
+          
+          if (!File(backendPath).existsSync()) {
+             backendPath = '../rust_backend/target/debug/wayland_connect_backend';
+             overlayPath = '../wayland_pointer_overlay/target/debug/wayland_pointer_overlay';
+          }
+
+          if (!File(backendPath).existsSync()) {
+             backendPath = 'rust_backend/target/release/wayland_connect_backend';
+             overlayPath = 'wayland_pointer_overlay/target/release/wayland_pointer_overlay';
+          }
        }
 
        debugPrint("🚀 Attempting to launch Backend from: $backendPath");
@@ -376,7 +384,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isSmallScreen = constraints.maxWidth < 900;
-        final double sidebarWidth = isSmallScreen ? 88.0 : 280.0;
+        final double sidebarWidth = isSmallScreen ? 72.0 : 280.0;
 
         return Scaffold(
           body: Container(
@@ -420,14 +428,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                              : Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.asset('assets/images/app_icon.png', width: 48, height: 48),
+                                 ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.asset('assets/images/app_icon.png', width: 40, height: 40),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12),
+                                const SizedBox(height: 12),
                                 const Text("WAYLAND", style: TextStyle(fontFamily: 'Roboto', fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 4, color: Colors.white70)),
                                 const SizedBox(height: 2),
-                                Container(width: 40, height: 1.5, color: Colors.white),
+                                Container(width: 40, height: 2, color: Colors.white),
                                 const SizedBox(height: 4),
                                 const Text("CONNECT", style: TextStyle(fontFamily: 'Roboto', fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1, color: Colors.white)),
                               ],
@@ -459,11 +468,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.info_outline, size: 12, color: Colors.white38),
-                                    const SizedBox(width: 8),
+                                    const Icon(Icons.info_outline, size: 10, color: Colors.white38),
+                                    const SizedBox(width: 6),
                                     Text("v1.0.0", style: TextStyle(
                                       color: Colors.white70, 
-                                      fontSize: 12,
+                                      fontSize: 10,
                                       shadows: [
                                         Shadow(color: Colors.blueAccent.withOpacity(0.8), blurRadius: 15),
                                         Shadow(color: Colors.purpleAccent.withOpacity(0.5), blurRadius: 25),
@@ -483,6 +492,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                 Expanded(
                    child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 400),
+                      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                        return Stack(
+                          alignment: Alignment.topLeft,
+                          children: [
+                            ...previousChildren,
+                            if (currentChild != null) currentChild,
+                          ],
+                        );
+                      },
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
                       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -499,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                       },
                       child: Container(
                         key: ValueKey(_selectedIndex),
-                        padding: EdgeInsets.all(isSmallScreen ? 24 : 48),
+                        padding: const EdgeInsets.all(24),
                         child: _buildContent(), 
                       ),
                    ),
@@ -546,12 +564,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: SingleChildScrollView(
-        child: LayoutBuilder(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SingleChildScrollView(
+          child: LayoutBuilder(
           builder: (context, constraints) {
             final bool isVeryNarrow = constraints.maxWidth < 700;
-            final double horizontalPadding = isVeryNarrow ? 16 : 32;
-            final double topPadding = isVeryNarrow ? 16 : 32;
+            final double horizontalPadding = isVeryNarrow ? 12 : 24;
+            final double topPadding = isVeryNarrow ? 12 : 24;
 
             return Padding(
               padding: EdgeInsets.only(left: horizontalPadding, right: horizontalPadding, top: topPadding, bottom: 20),
@@ -568,14 +588,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                           children: [
                             const FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text(
+                                child: Text(
                                 "Dashboard", 
-                                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1.2)
+                                style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1.0)
                               ),
                             ),
                             Text(
                               "System Control Center",
-                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12, fontWeight: FontWeight.w500),
+                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -584,7 +604,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                       _StatusBadge(active: _serviceActive),
                     ],
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                   
                   // Stats Section
                   Wrap(
@@ -600,25 +620,27 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
                         _StatCard(title: "Request", value: "${_devices.where((d) => d['status'] == 'Pending').length}", icon: Icons.verified_user_outlined),
                       ].map((card) {
                         double itemWidth;
-                        if (constraints.maxWidth < 500) {
-                          itemWidth = constraints.maxWidth; // 1 column
-                        } else if (constraints.maxWidth < 950) {
-                          itemWidth = (constraints.maxWidth - 16) / 2; // 2 columns
+                        double availableWidth = constraints.maxWidth - (horizontalPadding * 2);
+                        if (availableWidth < 500) {
+                          itemWidth = availableWidth; // 1 column
+                        } else if (availableWidth < 950) {
+                          itemWidth = (availableWidth - 16) / 2; // 2 columns
                         } else {
-                          itemWidth = (constraints.maxWidth - (16 * 3)) / 4; // 4 columns
+                          // Subtract a small epsilon to avoid subpixel wrapping issues
+                          itemWidth = (availableWidth - (16 * 3)) / 4 - 0.1; // 4 columns
                         }
                         return SizedBox(
-                          width: itemWidth.clamp(160.0, double.infinity), 
+                          width: itemWidth.clamp(140.0, double.infinity), 
                           child: card
                         );
                       }).toList(),
                     ],
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
                   
                   // Recent Activity Section
                   const Text("Recent Activity", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5)),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   
                   _devices.isEmpty
                       ? Center(
@@ -692,6 +714,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
               ),
             );
           },
+        ),
         ),
       ),
     );
@@ -986,9 +1009,9 @@ class _SidebarItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: selected ? Colors.black : Colors.white54,
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: selected ? FontWeight.w900 : FontWeight.w500,
-                            letterSpacing: 1.2,
+                            letterSpacing: 1.0,
                           ),
                         ),
                       ],
@@ -1016,7 +1039,7 @@ class _StatCard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isCompact = constraints.maxWidth < 180;
-        final double cardPadding = isCompact ? 14 : 20;
+        final double cardPadding = isCompact ? 16 : 24;
 
         return Container(
           padding: EdgeInsets.all(cardPadding),
@@ -1025,10 +1048,10 @@ class _StatCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: highlight 
-                ? [Colors.blueAccent.withOpacity(0.15), Colors.blueAccent.withOpacity(0.05)]
-                : [const Color(0xFF121212), const Color(0xFF0A0A0A)],
+                ? [Colors.blueAccent.withOpacity(0.12), Colors.blueAccent.withOpacity(0.04)]
+                : [const Color(0xFF101010), const Color(0xFF080808)],
             ),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: highlight ? Colors.blueAccent.withOpacity(0.4) : Colors.white.withOpacity(0.05),
               width: 1.5,
@@ -1039,18 +1062,18 @@ class _StatCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: highlight ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(10),
+                  color: highlight ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.02),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: highlight ? Colors.blueAccent : Colors.white54, size: 18),
+                child: Icon(icon, color: highlight ? Colors.blueAccent : Colors.white54, size: 32),
               ),
-              SizedBox(height: isCompact ? 10 : 16),
+              SizedBox(height: isCompact ? 14 : 24),
               Text(title, 
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.5)
+                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)
               ),
               const SizedBox(height: 4),
               FittedBox(
@@ -1059,9 +1082,9 @@ class _StatCard extends StatelessWidget {
                 child: Text(value, 
                   style: const TextStyle(
                     color: Colors.white, 
-                    fontSize: 20, 
+                    fontSize: 36, 
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                    letterSpacing: -1.5,
                   )
                 ),
               ),

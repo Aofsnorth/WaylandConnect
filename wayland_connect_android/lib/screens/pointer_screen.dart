@@ -44,6 +44,9 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
   // User adjustable sensitivity
   double _sensitivity = 1.0; 
   
+  // User adjustable pointer size
+  double _pointerSize = 1.0;
+  
   // Double tap detection
   DateTime _lastTapTime = DateTime.now();
 
@@ -62,12 +65,33 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
     
     _loadSettings();
     _setupSensors();
+    _setupVolumeListener();
+  }
+
+  void _setupVolumeListener() {
+    const channel = MethodChannel('com.arthenyx.wayland_connect/volume');
+    channel.setMethodCallHandler((call) async {
+      if (!_pointerActive) return;
+
+      if (call.method == 'volume_up') {
+        _updatePointerSize((_pointerSize + 0.1).clamp(0.5, 2.5));
+      } else if (call.method == 'volume_down') {
+        _updatePointerSize((_pointerSize - 0.1).clamp(0.5, 2.5));
+      } else if (call.method == 'power_down') {
+         // Power Button Down -> Left Click Down
+         _sendClick('left', isDown: true);
+      } else if (call.method == 'power_up') {
+         // Power Button Up -> Left Click Up
+         _sendClick('left', isDown: false);
+      }
+    });
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _sensitivity = prefs.getDouble('pointer_sensitivity') ?? 1.0;
+      _pointerSize = prefs.getDouble('pointer_size') ?? 1.0;
     });
   }
 
@@ -75,6 +99,13 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
     setState(() => _sensitivity = val);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('pointer_sensitivity', val);
+  }
+
+  Future<void> _updatePointerSize(double val) async {
+    setState(() => _pointerSize = val);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('pointer_size', val);
+    _sendPointerData(); // Trigger update
   }
 
   @override
@@ -240,6 +271,7 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
           'mode': _currentMode,
           'pitch': _pitch,
           'roll': _roll,
+          'size': _pointerSize,
         }
       };
       try {
@@ -251,6 +283,21 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
       }
     } else {
       debugPrint('⚠️ Socket is null - not connected!');
+    }
+  }
+
+  void _sendClick(String button, {bool isDown = true}) {
+    if (widget.socket != null) {
+       try {
+         final data = {
+           "type": "mouse_click",
+           "data": {
+             "button": button,
+             "state": isDown ? "down" : "up" 
+           }
+         };
+         widget.socket!.write('${jsonEncode(data)}\n');
+       } catch (_) {}
     }
   }
 
@@ -279,7 +326,7 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+      return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -299,7 +346,7 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
           SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 60),
+                const SizedBox(height: 10),
                 const Text('PRESENTATION TOOLS', style: TextStyle(color: Colors.white24, fontSize: 11, letterSpacing: 3, fontWeight: FontWeight.w900)),
                 
                 // Visualization in middle
@@ -311,14 +358,16 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
                 
                 const SizedBox(height: 10),
                 _buildSensitivitySlider(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
+                _buildSizeSlider(),
+                const SizedBox(height: 10),
                 _buildModeShortcuts(),
-                const SizedBox(height: 30),
+                const SizedBox(height: 10),
 
                 // NEW LAYOUT: Control Panel Fixed at Bottom
                 _buildFixedControlPanel(),
                 
-                const SizedBox(height: 40),
+                const SizedBox(height: 10),
               ],
             ),
           ),
@@ -346,19 +395,25 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
       case 0: // Horizontal
         width = 200; height = 8;
         decoration = BoxDecoration(
-          color: color,
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.black, width: 1.5),
-          boxShadow: highContrastShadow,
+          border: Border.all(color: color, width: 2),
+          boxShadow: [
+             BoxShadow(color: Colors.black, blurRadius: 2, spreadRadius: 0, offset: const Offset(1,1)),
+             BoxShadow(color: color.withOpacity(0.3), blurRadius: 20)
+          ],
         );
         break;
       case 1: // Vertical
         width = 8; height = 200;
         decoration = BoxDecoration(
-          color: color,
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.black, width: 1.5),
-          boxShadow: highContrastShadow,
+          border: Border.all(color: color, width: 2),
+          boxShadow: [
+             BoxShadow(color: Colors.black, blurRadius: 2, spreadRadius: 0, offset: const Offset(1,1)),
+             BoxShadow(color: color.withOpacity(0.3), blurRadius: 20)
+          ],
         );
         break;
       case 3: // Ring (Highlight)
@@ -384,6 +439,24 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
             bottomRight: Radius.circular(5)
           ), 
           border: Border.all(color: Colors.black, width: 2),
+          boxShadow: highContrastShadow,
+        );
+        break;
+      case 5: // Horizontal Hollow (Large)
+        width = 300; height = 25;
+        decoration = BoxDecoration(
+          color: Colors.transparent, // Hollow
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color, width: 4), // Thick border
+          boxShadow: highContrastShadow,
+        );
+        break;
+      case 6: // Vertical Hollow (Large)
+        width = 25; height = 300;
+        decoration = BoxDecoration(
+          color: Colors.transparent, // Hollow
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color, width: 4), // Thick border
           boxShadow: highContrastShadow,
         );
         break;
@@ -456,35 +529,97 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
     );
   }
 
-  Widget _buildModeShortcuts() {
+  Widget _buildSizeSlider() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white12)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      width: 280,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
         children: [
-          _modeIcon(0, Icons.maximize),
-          _modeIcon(1, Icons.more_vert),
-          _modeIcon(2, Icons.radio_button_checked),
-          _modeIcon(3, Icons.panorama_fish_eye),
-          _modeIcon(4, Icons.flash_on), // Tail Icon
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("POINTER SIZE", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              Text("${(_pointerSize * 100).toInt()}%", style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white12,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white.withOpacity(0.1),
+            ),
+            child: Slider(
+              value: _pointerSize,
+              min: 0.5,
+              max: 2.5,
+              onChanged: _updatePointerSize,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _modeIcon(int mode, IconData icon) {
+  Widget _buildModeShortcuts() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Calculate item width to fit 4 items per row perfectly
+            final itemWidth = (constraints.maxWidth - 20) / 4; 
+            
+            return Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 0,
+              runSpacing: 5,
+              children: [
+                _buildSymmetricIcon(0, Icons.maximize, itemWidth),
+                _buildSymmetricIcon(1, Icons.more_vert, itemWidth),
+                _buildSymmetricIcon(2, Icons.radio_button_checked, itemWidth),
+                _buildSymmetricIcon(5, Icons.crop_landscape, itemWidth), // Hollow H
+                _buildSymmetricIcon(6, Icons.crop_portrait, itemWidth),  // Hollow V
+                _buildSymmetricIcon(3, Icons.panorama_fish_eye, itemWidth),
+                _buildSymmetricIcon(4, Icons.flash_on, itemWidth),
+              ],
+            );
+          }
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSymmetricIcon(int mode, IconData icon, double width) {
     final isSelected = _currentMode == mode;
     return GestureDetector(
       onTap: () => _changeMode(mode),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 5),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(15)),
-        child: Icon(icon, color: isSelected ? Colors.black : Colors.white38, size: 20),
+        width: width,
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent, 
+            borderRadius: BorderRadius.circular(15)
+          ),
+          child: Icon(icon, color: isSelected ? Colors.black : Colors.white38, size: 20),
+        ),
       ),
     );
   }
+
 
   Widget _buildModePreview() {
     switch (_currentMode) {
@@ -493,6 +628,8 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
       case 2: return _previewText('LASER DOT');
       case 3: return _previewText('PRECISION RING');
       case 4: return _previewText('LASER TAIL');
+      case 5: return _previewText('HOLLOW HORIZ');
+      case 6: return _previewText('HOLLOW VERT');
       default: return const SizedBox();
     }
   }
@@ -506,7 +643,7 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: SizedBox(
-        height: 120, // Tall area for controls
+        height: 100, // Reduced height to prevent overflow
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -525,7 +662,7 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
             Center(
               child: _PointerTouchButton(
                 isCircle: true,
-                width: 100, height: 100,
+                width: 80, height: 80, // Smaller button
                 icon: Icons.gps_fixed,
                 onActiveChanged: (val) {
                   if (val) _calibrateCenter(); // Auto-calibrate on press

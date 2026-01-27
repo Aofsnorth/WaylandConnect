@@ -7,6 +7,8 @@ pub enum InputEvent {
     Move { dx: f64, dy: f64 },
     #[serde(rename = "click")]
     Click { button: String },
+    #[serde(rename = "mouse_click")]
+    MouseClick { button: String, state: String }, // state: "down" or "up"
     #[serde(rename = "scroll")]
     Scroll { dy: f64 },
     #[serde(rename = "keypress")]
@@ -35,7 +37,14 @@ pub enum InputEvent {
 
     // Presentation Pointer
     #[serde(rename = "pointer_data")]
-    PointerData { active: bool, mode: i32, pitch: f32, roll: f32 },
+    PointerData { 
+        active: bool, 
+        mode: i32, 
+        pitch: f32, 
+        roll: f32,
+        #[serde(default = "default_size")] 
+        size: f32 
+    },
     
     // Presentation Slide Control
     #[serde(rename = "presentation_control")]
@@ -44,6 +53,8 @@ pub enum InputEvent {
     #[serde(rename = "set_pointer_monitor")]
     SetPointerMonitor { monitor: i32 },
 }
+
+fn default_size() -> f32 { 1.0 }
 
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -29,8 +29,10 @@ sudo rm -f "$UDEV_RULES"
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# 4. Remove desktop entry
-echo "🖥️  Removing desktop entry..."
+# 4. Remove desktop entry and icon
+echo "🖥️  Removing desktop entry & icon..."
 sudo rm -f /usr/share/applications/wayland-connect.desktop
+sudo rm -f /usr/share/pixmaps/wayland-connect.png
+sudo gtk-update-icon-cache -f /usr/share/icons/hicolor/ || true
 
 echo "✅ Uninstallation complete!"

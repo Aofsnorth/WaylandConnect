@@ -274,9 +274,9 @@ impl InputServer {
                                                     let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
                                                 }
                                             },
-                                            InputEvent::PointerData { active, mode, pitch, roll } => {
-                                                println!("📍 PointerData from {}: active={}, mode={}, pitch={:.2}, roll={:.2}", device_ip, active, mode, pitch, roll);
-                                                pointer_manager.update(active, mode, pitch, roll);
+                                            InputEvent::PointerData { active, mode, pitch, roll, size } => {
+                                                println!("📍 PointerData from {}: active={}, mode={}, pitch={:.2}, roll={:.2}, size={:.2}", device_ip, active, mode, pitch, roll, size);
+                                                pointer_manager.update(active, mode, pitch, roll, size);
                                             },
                                             InputEvent::PresentationControl { action } => {
                                                 // Send keyboard arrow keys for slide control

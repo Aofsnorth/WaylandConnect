@@ -30,6 +30,7 @@ struct AnimState {
 struct PointerState {
     target_x: f32,
     target_y: f32,
+    target_size: f32,
     active: bool,
     mode: i32,
     monitor_index: i32,
@@ -163,6 +164,7 @@ fn main() {
                 trail: Vec::new(),
                 glow_intensity: 1.0,
             },
+            target_size: 1.0,
         }));
 
         let window = ApplicationWindow::builder()
@@ -207,15 +209,15 @@ fn main() {
         let da_tick = drawing_area.clone();
         let win_tick = window.clone();
         
-        glib::timeout_add_local(Duration::from_millis(10), move || {
+        glib::timeout_add_local(Duration::from_millis(5), move || {
             let now = Instant::now();
             let mut s = state_tick.lock().unwrap();
             let dt = now.duration_since(s.last_update).as_secs_f64().min(0.1);
             s.last_update = now;
             
-            // Movement Smoothing
-            s.anim.x = damp(s.anim.x, s.target_x as f64, 20.0, dt);
-            s.anim.y = damp(s.anim.y, s.target_y as f64, 20.0, dt);
+            // Movement Smoothing (Increased factor for "0ms" feel)
+            s.anim.x = damp(s.anim.x, s.target_x as f64, 45.0, dt);
+            s.anim.y = damp(s.anim.y, s.target_y as f64, 45.0, dt);
             
             // Opacity
             let target_op = if s.active { 1.0 } else { 0.0 };
@@ -242,13 +244,19 @@ fn main() {
             
             // Morphing
             let (t_w, t_h, t_r, t_sw, t_fa) = match s.mode {
-                0 => (200.0, 4.0, 2.0, 0.0, 1.0),   // H-Bar
-                1 => (4.0, 200.0, 2.0, 0.0, 1.0),   // V-Bar
+                0 => (200.0, 4.0, 2.0, 0.0, 1.0),   // H-Bar (Solid) -- Reverted to solid
+                1 => (4.0, 200.0, 2.0, 0.0, 1.0),   // V-Bar (Solid) -- Reverted to solid
                 2 => (30.0, 30.0, 15.0, 0.0, 1.0),  // Dot
                 3 => (80.0, 80.0, 40.0, 5.0, 0.0),  // Ring
                 4 => (20.0, 20.0, 10.0, 0.0, 1.0),  // Tail
-                _ => (30.0, 30.0, 15.0, 0.0, 1.0),
+                5 => (300.0, 25.0, 8.0, 4.0, 0.0),  // Large H-Hollow (Rongga)
+                6 => (25.0, 300.0, 8.0, 4.0, 0.0),  // Large V-Hollow (Rongga)
+                _ => (30.0, 30.0, 15.0, 0.0, 1.0),  // Default
             };
+            
+            // Apply scale from Android
+            let scale = s.target_size as f64;
+            let (t_w, t_h, t_r, t_sw) = (t_w * scale, t_h * scale, t_r * scale, t_sw * scale);
             
             s.anim.width = damp(s.anim.width, t_w, 15.0, dt);
             s.anim.height = damp(s.anim.height, t_h, 15.0, dt);
@@ -296,6 +304,7 @@ fn main() {
                                 s.target_y = y; 
                                 s.active = true;
                                 if parts.len() >= 3 { s.mode = parts[2].parse().unwrap_or(2); }
+                                if parts.len() >= 4 { s.target_size = parts[3].parse().unwrap_or(1.0); }
                             }
                         }
                     }

@@ -130,6 +130,20 @@ impl InputAdapter for UInputAdapter {
                 self.write_raw(1, code, 1)?; // Press
                 self.write_raw(1, code, 0)?; // Release
             }
+            ProtocolEvent::MouseClick { button, state } => {
+                let code = match button.as_str() {
+                    "left" => 0x110,
+                    "right" => 0x111,
+                    "middle" => 0x112,
+                    _ => return Ok(()),
+                };
+                let value = match state.as_str() {
+                    "down" => 1,  // Press
+                    "up" => 0,    // Release
+                    _ => return Ok(()),
+                };
+                self.write_raw(1, code, value)?;
+            }
             ProtocolEvent::Scroll { dy } => {
                 // EV_REL (2), REL_WHEEL (8)
                 // Remove inversion and hard multiplier to let frontend decide speed/direction
