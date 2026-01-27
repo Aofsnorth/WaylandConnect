@@ -4,3 +4,10 @@ members = [
     "wayland_pointer_overlay"
 ]
 resolver = "2"
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Maximize optimization impact
+panic = "abort"     # Remove unwinding code
+strip = true        # Strip symbols from the binary

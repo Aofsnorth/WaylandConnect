@@ -26,10 +26,12 @@ build-overlay: ## Build the Wayland Overlay
 build-desktop: ## Build the Flutter Linux App
 	@echo "💙 Building Flutter Desktop..."
 	cd wayland_connect_desktop && $(FLUTTER) build linux --release
+	@echo "🗜️ Stripping Desktop binary..."
+	@strip wayland_connect_desktop/build/linux/x64/release/bundle/wayland_connect_desktop || true
 
 build-android: ## Build the Flutter Android App
-	@echo "🤖 Building Flutter Android..."
-	cd wayland_connect_android && $(FLUTTER) build apk --release
+	@echo "🤖 Building Flutter Android (Split by ABI for smaller size)..."
+	cd wayland_connect_android && $(FLUTTER) build apk --release --split-per-abi
 
 test: ## Run tests for all components
 	@echo "🧪 Running Tests..."
