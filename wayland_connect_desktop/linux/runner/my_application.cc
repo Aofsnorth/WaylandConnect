@@ -53,8 +53,14 @@ static void my_application_activate(GApplication* application) {
   }
 
   gtk_window_set_default_size(window, 1280, 720);
-  // Icon is handled by Dart side using window_manager to ensure correct paths.
-  // gtk_window_set_icon_from_file(window, "data/flutter_assets/assets/images/app_icon.png", NULL);
+
+  // Set the window icon from assets
+  g_autoptr(GError) error = nullptr;
+  if (!gtk_window_set_icon_from_file(window, "data/flutter_assets/assets/images/app_icon.png", &error)) {
+    g_warning("Failed to set window icon from bundled assets: %s", error->message);
+    // Fallback if running from source/different directory
+    gtk_window_set_icon_from_file(window, "assets/images/app_icon.png", nullptr);
+  }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

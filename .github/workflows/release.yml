@@ -105,18 +105,19 @@ jobs:
           strip AppDir/usr/bin/wayland_pointer_overlay
           
           # Copy Desktop Entry & Icon
-          cp wayland_connect_desktop/assets/images/app_icon.png AppDir/usr/share/icons/hicolor/512x512/apps/wayland-connect.png
-          cp AppDir/usr/share/icons/hicolor/512x512/apps/wayland-connect.png AppDir/wayland-connect.png
+          cp wayland_connect_desktop/assets/images/app_icon.png AppDir/usr/share/icons/hicolor/512x512/apps/com.wayland.connect.png
+          cp AppDir/usr/share/icons/hicolor/512x512/apps/com.wayland.connect.png AppDir/com.wayland.connect.png
           
-          cat > AppDir/usr/share/applications/wayland-connect.desktop << EOF
+          cat > AppDir/usr/share/applications/com.wayland.connect.desktop << EOF
           [Desktop Entry]
           Name=Wayland Connect
           Exec=wayland_connect_desktop
-          Icon=wayland-connect
+          Icon=com.wayland.connect
           Type=Application
           Categories=Utility;
+          StartupWMClass=com.wayland.connect
           EOF
-          cp AppDir/usr/share/applications/wayland-connect.desktop AppDir/
+          cp AppDir/usr/share/applications/com.wayland.connect.desktop AppDir/
           
           # Create AppRun script
           cat > AppDir/AppRun << 'EOF'
