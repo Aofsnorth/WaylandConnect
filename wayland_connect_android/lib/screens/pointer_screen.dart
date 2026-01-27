@@ -392,28 +392,22 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
     ];
 
     switch (_currentMode) {
-      case 0: // Horizontal
-        width = 200; height = 8;
+      case 0: // Horizontal (Solid)
+        width = 200; height = 12;
         decoration = BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color, width: 2),
-          boxShadow: [
-             BoxShadow(color: Colors.black, blurRadius: 2, spreadRadius: 0, offset: const Offset(1,1)),
-             BoxShadow(color: color.withOpacity(0.3), blurRadius: 20)
-          ],
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.black, width: 2),
+          boxShadow: highContrastShadow,
         );
         break;
-      case 1: // Vertical
-        width = 8; height = 200;
+      case 1: // Vertical (Solid)
+        width = 12; height = 200;
         decoration = BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color, width: 2),
-          boxShadow: [
-             BoxShadow(color: Colors.black, blurRadius: 2, spreadRadius: 0, offset: const Offset(1,1)),
-             BoxShadow(color: color.withOpacity(0.3), blurRadius: 20)
-          ],
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.black, width: 2),
+          boxShadow: highContrastShadow,
         );
         break;
       case 3: // Ring (Highlight)
