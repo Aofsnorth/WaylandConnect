@@ -5,7 +5,7 @@ use crate::adapter::InputAdapter;
 use crate::media_manager::MediaManager;
 use crate::pointer_manager::PointerManager;
 use std::sync::Arc;
-use log::{info, error, warn};
+use log::{info, error};
 use notify_rust::Notification;
 use std::collections::HashMap;
 use std::sync::Mutex;

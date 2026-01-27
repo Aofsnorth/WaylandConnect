@@ -1,6 +1,6 @@
 use crate::protocol::InputEvent as ProtocolEvent;
 use async_trait::async_trait;
-use input_linux::{UInputHandle, EventKind, RelativeAxis, Key, InputId, EventTime};
+use input_linux::{UInputHandle, EventKind, RelativeAxis, Key, InputId};
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
