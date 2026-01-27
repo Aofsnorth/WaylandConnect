@@ -75,7 +75,7 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  Socket? _socket;
+  SecureSocket? _socket;
   bool _isConnected = false;
   String _approvalStatus = "Unknown"; // Unknown, Pending, Trusted, Declined, Blocked
   final TextEditingController _ipController = TextEditingController(text: "192.168.1.1");
@@ -196,7 +196,12 @@ class _MainScreenState extends State<MainScreen> {
                   // 2. Validate Service existence (The Check)
                   setDialogState(() => isChecking = true);
                   try {
-                    final testSocket = await Socket.connect(ip, port, timeout: const Duration(seconds: 3));
+                    final testSocket = await SecureSocket.connect(
+                      ip, 
+                      port, 
+                      timeout: const Duration(seconds: 3),
+                      onBadCertificate: (cert) => true, // Self-signed support
+                    );
                     testSocket.destroy(); // Success, close temp socket
                     
                     // 3. Save and Proceed
@@ -228,7 +233,12 @@ class _MainScreenState extends State<MainScreen> {
     HapticFeedback.mediumImpact();
     try {
       int port = int.tryParse(_portController.text) ?? 12345;
-      final s = await Socket.connect(_ipController.text, port, timeout: const Duration(seconds: 4));
+      final s = await SecureSocket.connect(
+        _ipController.text, 
+        port, 
+        timeout: const Duration(seconds: 4),
+        onBadCertificate: (cert) => true,
+      );
       setState(() {
         _socket = s;
         _isConnected = true;

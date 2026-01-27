@@ -35,3 +35,8 @@ bin/
 dist/
 *.AppImage
 *.apk
+
+# Local Data
+cert.pem
+key.pem
+devices.json

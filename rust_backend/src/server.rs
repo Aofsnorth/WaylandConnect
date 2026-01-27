@@ -12,7 +12,52 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufReader as StdBufReader};
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::{ServerConfig, Certificate, PrivateKey};
+use std::path::Path;
+
+fn get_tls_config() -> anyhow::Result<ServerConfig> {
+    let cert_path = "cert.pem";
+    let key_path = "key.pem";
+
+    if !Path::new(cert_path).exists() || !Path::new(key_path).exists() {
+        info!("🔐 Generating new self-signed TLS certificate...");
+        let cert = rcgen::generate_simple_self_signed(vec!["waylandconnect.local".to_string()])?;
+        
+        let mut cert_file = File::create(cert_path)?;
+        cert_file.write_all(cert.serialize_pem()?.as_bytes())?;
+        
+        let mut key_file = File::create(key_path)?;
+        key_file.write_all(cert.serialize_private_key_pem().as_bytes())?;
+        info!("✅ TLS certificate generated.");
+    }
+
+    let cert_file = File::open(cert_path)?;
+    let mut reader = StdBufReader::new(cert_file);
+    let certs = rustls_pemfile::certs(&mut reader)?
+        .into_iter()
+        .map(Certificate)
+        .collect();
+
+    let key_file = File::open(key_path)?;
+    let mut reader = StdBufReader::new(key_file);
+    let mut keys = rustls_pemfile::pkcs8_private_keys(&mut reader)?;
+    if keys.is_empty() {
+        let key_file = File::open(key_path)?;
+        let mut reader = StdBufReader::new(key_file);
+        keys = rustls_pemfile::rsa_private_keys(&mut reader)?;
+    }
+    
+    let key = PrivateKey(keys.into_iter().next().ok_or_else(|| anyhow::anyhow!("No private key found"))?);
+
+    let config = ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)?;
+
+    Ok(config)
+}
 
 // State management for devices
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -64,16 +109,28 @@ impl InputServer {
 
     pub async fn run(&self, port: u16) -> anyhow::Result<()> {
         let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-        info!("Wayland Connect Server listening on 0.0.0.0:{}", port);
+        let tls_config = get_tls_config()?;
+        let acceptor = TlsAcceptor::from(Arc::new(tls_config));
+        
+        info!("🔐 Wayland Connect Secure Server listening on 0.0.0.0:{}", port);
 
         loop {
-            let (mut socket, addr) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
             let adapter = self.adapter.clone();
             let media_manager = self.media_manager.clone();
             let pointer_manager = self.pointer_manager.clone();
+            let acceptor = acceptor.clone();
             
             tokio::spawn(async move {
-                let (reader, mut writer) = socket.split();
+                let socket = match acceptor.accept(socket).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("TLS accept error from {}: {}", addr, e);
+                        return;
+                    }
+                };
+                
+                let (reader, mut writer) = tokio::io::split(socket);
                 let mut lines = BufReader::new(reader).lines();
                 let device_ip = addr.ip().to_string();
 

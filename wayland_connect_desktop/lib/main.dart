@@ -84,7 +84,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> with TrayListener, WindowListener {
   int _selectedIndex = 0; // 0: Dashboard, 1: Devices, 2: Security, 3: Settings
   bool _serviceActive = true;
-  Socket? _socket;
+  SecureSocket? _socket;
   Process? _backendProcess;
   Process? _overlayProcess;
   List<Map<String, dynamic>> _devices = [];
@@ -339,7 +339,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
     int port = int.tryParse(_portController.text) ?? 12345;
     
     try {
-      _socket = await Socket.connect('127.0.0.1', port);
+      _socket = await SecureSocket.connect(
+        '127.0.0.1', 
+        port,
+        onBadCertificate: (cert) => true, // Self-signed support
+      );
       if (mounted) setState(() => _isConnected = true);
       
       utf8.decoder.bind(_socket!).transform(const LineSplitter()).listen(
