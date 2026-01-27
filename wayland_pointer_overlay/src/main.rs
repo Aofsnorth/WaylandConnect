@@ -127,13 +127,13 @@ fn damp(current: f64, target: f64, smoothing: f64, dt: f64) -> f64 {
 }
 
 fn main() {
-    println!("🚀 OVERLAY STARTING - DEBUG MODE ACTIVE");
+    // println!("🚀 OVERLAY STARTING");
     let app = Application::builder()
         .application_id("com.wayland.connect.pointer")
         .build();
 
     app.connect_activate(|app| {
-        println!("🚀 OVERLAY ACTIVATE TRIGGERED");
+        // println!("🚀 OVERLAY ACTIVATE TRIGGERED");
         let provider = CssProvider::new();
         // Transparent again
         provider.load_from_data("window, drawingarea { background-color: rgba(0, 0, 0, 0); }");
@@ -234,7 +234,7 @@ fn main() {
                     let monitors = display.monitors();
                     if s.monitor_index >= 0 && (s.monitor_index as u32) < monitors.n_items() {
                         if let Some(m) = monitors.item(s.monitor_index as u32).and_then(|i| i.downcast::<gtk4::gdk::Monitor>().ok()) {
-                            println!("🖥️ Overlay switching to monitor {}", s.monitor_index);
+                            // info!("🖥️ Overlay switching to monitor {}", s.monitor_index);
                             win_tick.set_monitor(&m);
                         }
                     }

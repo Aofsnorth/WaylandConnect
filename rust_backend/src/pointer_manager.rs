@@ -59,7 +59,7 @@ impl PointerManager {
     pub fn set_monitor(&self, monitor: i32) {
         let msg = format!("MONITOR:{}", monitor);
         match self.socket.send_to(msg.as_bytes(), "127.0.0.1:7878") {
-            Ok(_) => println!("📤 UDP Sent Monitor Selection: {}", msg),
+            Ok(_) => info!("📤 UDP Sent Monitor Selection: {}", msg),
             Err(e) => eprintln!("❌ UDP Send Error (Monitor): {}", e),
         }
     }

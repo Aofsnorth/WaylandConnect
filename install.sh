@@ -11,7 +11,7 @@ UDEV_RULES="/etc/udev/rules.d/99-waylandconnect-uinput.rules"
 SYSTEMD_SERVICE="/etc/systemd/user/${SERVICE_NAME}.service"
 
 echo "╔════════════════════════════════════════╗"
-echo "║   WaylandConnect Installer v0.1.0      ║"
+echo "║   WaylandConnect Installer v1.0.0      ║"
 echo "║   Remote Control for Linux Wayland     ║"
 echo "╚════════════════════════════════════════╝"
 echo ""

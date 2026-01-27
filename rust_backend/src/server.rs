@@ -275,7 +275,7 @@ impl InputServer {
                                                 }
                                             },
                                             InputEvent::PointerData { active, mode, pitch, roll, size } => {
-                                                println!("📍 PointerData from {}: active={}, mode={}, pitch={:.2}, roll={:.2}, size={:.2}", device_ip, active, mode, pitch, roll, size);
+                                                // info!("📍 PointerData from {}: active={}, mode={}, pitch={:.2}, roll={:.2}, size={:.2}", device_ip, active, mode, pitch, roll, size);
                                                 pointer_manager.update(active, mode, pitch, roll, size);
                                             },
                                             InputEvent::PresentationControl { action } => {
