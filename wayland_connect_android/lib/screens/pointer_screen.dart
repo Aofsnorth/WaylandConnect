@@ -468,6 +468,21 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
         break;
     }
 
+    // Apply size stretching logic
+    switch (_currentMode) {
+      case 0:
+      case 5:
+        width *= _pointerSize;
+        break;
+      case 1:
+      case 6:
+        height *= _pointerSize;
+        break;
+      default:
+        width *= _pointerSize;
+        height *= _pointerSize;
+    }
+
     return AnimatedContainer(
       duration: duration,
       curve: curve,

@@ -256,7 +256,11 @@ fn main() {
             
             // Apply scale from Android
             let scale = s.target_size as f64;
-            let (t_w, t_h, t_r, t_sw) = (t_w * scale, t_h * scale, t_r * scale, t_sw * scale);
+            let (t_w, t_h, t_r, t_sw) = match s.mode {
+                0 | 5 => (t_w * scale, t_h, t_r, t_sw), // Horizontal: stretch width
+                1 | 6 => (t_w, t_h * scale, t_r, t_sw), // Vertical: stretch height
+                _ => (t_w * scale, t_h * scale, t_r * scale, t_sw * scale), // Others: uniform scale
+            };
             
             s.anim.width = damp(s.anim.width, t_w, 15.0, dt);
             s.anim.height = damp(s.anim.height, t_h, 15.0, dt);
