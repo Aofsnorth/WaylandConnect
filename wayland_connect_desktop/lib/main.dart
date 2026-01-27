@@ -266,12 +266,23 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
        final prefs = await SharedPreferences.getInstance();
        await prefs.setString('service_port', port.toString());
        
-       // Detect Path (Checking production first, then debug)
-       String backendPath = '/opt/wayland-connect/bin/wayland_connect_backend';
-       String overlayPath = '/opt/wayland-connect/bin/wayland_pointer_overlay';
+       // Detect Path
+       // 1. Check relative to executable (AppImage / Portable uses this)
+       String exeDir = File(Platform.resolvedExecutable).parent.path;
+       String backendPath = '$exeDir/wayland_connect_backend';
+       String overlayPath = '$exeDir/wayland_pointer_overlay';
 
        if (!File(backendPath).existsSync()) {
-          // Fallbacks for local dev
+          // 2. Check /opt (Legacy/Global Install)
+          String optBackend = '/opt/wayland-connect/bin/wayland_connect_backend';
+          if (File(optBackend).existsSync()) {
+              backendPath = optBackend;
+              overlayPath = '/opt/wayland-connect/bin/wayland_pointer_overlay';
+          }
+       }
+
+       if (!File(backendPath).existsSync()) {
+          // 3. Fallbacks for local dev (Source Tree)
           backendPath = '../rust_backend/target/release/wayland_connect_backend';
           overlayPath = '../wayland_pointer_overlay/target/release/wayland_pointer_overlay';
           
@@ -281,8 +292,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
           }
 
           if (!File(backendPath).existsSync()) {
+             // For running via 'flutter run' where CWD is project root
              backendPath = 'rust_backend/target/release/wayland_connect_backend';
              overlayPath = 'wayland_pointer_overlay/target/release/wayland_pointer_overlay';
+             
+             if (!File(backendPath).existsSync()) {
+                backendPath = 'rust_backend/target/debug/wayland_connect_backend';
+                overlayPath = 'wayland_pointer_overlay/target/debug/wayland_pointer_overlay'; 
+             }
           }
        }
 
