@@ -17,6 +17,7 @@ import 'screens/keyboard_screen.dart';
 import 'screens/landing_screen.dart';
 import 'screens/media_screen.dart';
 import 'screens/pointer_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/disconnect_screen.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
@@ -59,12 +60,30 @@ Future<void> initializeService() async {
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  bool isForeground = false;
+  
   if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      isForeground = true;
+      service.setAsForegroundService();
+    });
+
+    service.on('setAsBackground').listen((event) {
+      isForeground = false;
+      service.setAsBackgroundService();
+    });
+
+    service.on('stopService').listen((event) {
+      service.stopSelf();
+    });
+
     service.on('updateStatus').listen((event) {
-      service.setForegroundNotificationInfo(
-        title: "Wayland Connect",
-        content: event?['content'] ?? "Running",
-      );
+      if (isForeground) {
+        service.setForegroundNotificationInfo(
+          title: "Wayland Connect",
+          content: event?['content'] ?? "Running",
+        );
+      }
     });
   }
 }
@@ -323,6 +342,7 @@ class _MainScreenState extends State<MainScreen> {
       if (_approvalStatus == "Trusted") {
          _showConnectedNotification();
          _updateServiceStatus("Connected to PC");
+         FlutterBackgroundService().invoke("setAsForeground");
       }
       _startPolling(); 
       _socketStream!.listen(
@@ -340,6 +360,7 @@ class _MainScreenState extends State<MainScreen> {
                    if (status == "Trusted") {
                       HapticFeedback.heavyImpact();
                       _showConnectedNotification();
+                      FlutterBackgroundService().invoke("setAsForeground");
                    }
                    if (status == "Blocked") {
                       HapticFeedback.vibrate();
@@ -429,6 +450,7 @@ class _MainScreenState extends State<MainScreen> {
         _socketStream = null;
       });
       _hideNotification();
+      FlutterBackgroundService().invoke("setAsBackground");
       if (_approvalStatus == "Trusted") _updateServiceStatus("Searching for PC...");
     }
   }
@@ -526,7 +548,7 @@ class _MainScreenState extends State<MainScreen> {
         
         return Scaffold(
           extendBodyBehindAppBar: true,
-          appBar: isDesktop ? null : (_isScrolled
+          appBar: isDesktop ? null : (_currentIndex == 4 ? null : (_isScrolled
               ? PreferredSize(
                   preferredSize: const Size.fromHeight(80),
                   child: ClipRect(
@@ -576,7 +598,7 @@ class _MainScreenState extends State<MainScreen> {
                       _buildStatusDot(),
                     ],
                   ),
-                )),
+                ))),
           body: Row(
             children: [
               if (isDesktop) 
@@ -601,6 +623,7 @@ class _MainScreenState extends State<MainScreen> {
                         KeyboardScreen(socket: _socket),
                         MediaScreen(socket: _socket, socketStream: _socketStream),
                         PointerScreen(socket: _socket),
+                        const SettingsScreen(),
                       ],
                     ),
                     if (!_isConnected && _approvalStatus == "Trusted")
@@ -681,6 +704,11 @@ class _MainScreenState extends State<MainScreen> {
                     selectedIcon: Icon(Icons.stars, color: Colors.black),
                     label: 'Present',
                   ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings, color: Colors.black),
+                    label: 'Settings',
+                  ),
                 ],
               ),
             ),
@@ -734,6 +762,7 @@ class _MainScreenState extends State<MainScreen> {
                   _SidebarItem(icon: Icons.keyboard_outlined, label: "Keyboard", selected: _currentIndex == 1, onTap: () => _onTabChanged(1)),
                   _SidebarItem(icon: Icons.music_note_outlined, label: "Media Control", selected: _currentIndex == 2, onTap: () => _onTabChanged(2)),
                   _SidebarItem(icon: Icons.stars_outlined, label: "Presentation", selected: _currentIndex == 3, onTap: () => _onTabChanged(3)),
+                  _SidebarItem(icon: Icons.settings_outlined, label: "Settings", selected: _currentIndex == 4, onTap: () => _onTabChanged(4)),
                 ],
               ),
             ),
