@@ -154,12 +154,57 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
     }
   }
 
+  Future<void> _setAutoStart(bool enable) async {
+    setState(() => _startOnBoot = enable);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('start_on_boot', enable);
+
+    if (Platform.isLinux) {
+      try {
+        final home = Platform.environment['HOME'];
+        if (home != null) {
+          final autostartDir = Directory('$home/.config/autostart');
+          if (!await autostartDir.exists()) {
+             await autostartDir.create(recursive: true);
+          }
+          final file = File('$home/.config/autostart/com.arthenyx.wayland_connect.desktop');
+          
+          if (enable) {
+             // Create .desktop file for autostart
+             // Note: We point to the AppImage or binary if installed. 
+             // Ideally this should point to the installed `wayland_connect_desktop` command.
+             // For now we assume it's in PATH or installed via install.sh to /usr/bin or /opt
+             const content = '''
+[Desktop Entry]
+Type=Application
+Name=Wayland Connect
+Exec=wayland_connect_desktop --hidden
+Icon=com.arthenyx.wayland_connect
+Comment=Start Wayland Connect Server
+X-GNOME-Autostart-enabled=true
+''';
+             await file.writeAsString(content);
+          } else {
+             if (await file.exists()) {
+               await file.delete();
+             }
+          }
+        }
+      } catch (e) {
+        debugPrint("Failed to toggle autostart: $e");
+      }
+    }
+  }
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
         _portController.text = prefs.getString('service_port') ?? "12345";
         _selectedMonitor = prefs.getInt('selected_monitor') ?? 0;
+        _startOnBoot = prefs.getBool('start_on_boot') ?? false;
+        _minimizeToTray = prefs.getBool('minimize_to_tray') ?? true;
+        _darkMode = prefs.getBool('dark_mode') ?? true;
       });
     }
   }
@@ -897,7 +942,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
       children: [
         const Text("Settings", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 40),
-        _buildSwitch("Start on Boot", "Automatically start server when you login.", _startOnBoot, (v) => setState(() => _startOnBoot = v)),
+        _buildSwitch("Start on Boot", "Automatically start server when you login.", _startOnBoot, _setAutoStart),
         _buildSwitch("Minimize to Tray", "Keep running in background when closed.", _minimizeToTray, (v) => setState(() => _minimizeToTray = v)),
         _buildSwitch("Dark Mode", "Use dark theme for dashboard.", _darkMode, (v) => setState(() => _darkMode = v)),
         const SizedBox(height: 24),
