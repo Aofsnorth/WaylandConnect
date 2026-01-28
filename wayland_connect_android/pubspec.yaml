@@ -20,6 +20,8 @@ dependencies:
   sensors_plus: ^6.0.1
   window_manager: ^0.4.3
   screen_retriever: ^0.2.0
+  flutter_local_notifications: ^20.0.0
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:

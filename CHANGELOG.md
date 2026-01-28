@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.3] - 2026-01-28
 
+### 🚀 Added
+- **Android**: Added "Phone Link"-style background notifications and automatic reconnection for Trusted devices.
+- **Android**: Added a dedicated Disconnected page with intuitive error handling and reconnection actions.
+- **Desktop**: Added dynamic monitor detection in settings using `screen_retriever`.
+
 ### 🩹 Fixed
 - Fixed build errors in CI caused by invalid semantic versioning formats.
-- Stabilized TLS implementation and icon visibility.
+- Fixed duplicated UI elements in desktop settings.
+- Improved Linux icon visibility and consistency.
 
 ### 🔒 Security
 - **Full TLS Encryption**: All communication between Android and PC is now encrypted using TLS with automatic self-signed certificate generation.

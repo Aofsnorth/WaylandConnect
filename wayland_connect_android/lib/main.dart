@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:ui';
+import 'dart:async';
 import 'package:window_manager/window_manager.dart';
 
 import 'screens/touchpad_screen.dart';
@@ -14,6 +15,51 @@ import 'screens/landing_screen.dart';
 import 'screens/media_screen.dart';
 import 'screens/pointer_screen.dart';
 import 'screens/disconnect_screen.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'connection_status', 
+    'Connection Status',
+    description: 'Shows if PC is connected',
+    importance: Importance.low,
+  );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: true,
+      isForegroundMode: true,
+      notificationChannelId: 'connection_status',
+      initialNotificationTitle: 'Wayland Connect',
+      initialNotificationContent: 'Searching for PC...',
+      foregroundServiceNotificationId: 888,
+    ),
+    iosConfiguration: IosConfiguration(),
+  );
+}
+
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  DartPluginRegistrant.ensureInitialized();
+  if (service is AndroidServiceInstance) {
+    service.on('updateStatus').listen((event) {
+      service.setForegroundNotificationInfo(
+        title: "Wayland Connect",
+        content: event?['content'] ?? "Running",
+      );
+    });
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +87,11 @@ void main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // Force edge-to-edge
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  await initializeService();
+
   runApp(const WaylandConnectApp());
 }
 
@@ -90,6 +141,19 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _loadSettingsAndConnect();
+    _startAutoReconnectLoop();
+  }
+
+  void _startAutoReconnectLoop() {
+    Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (!_isConnected && _approvalStatus == "Trusted") {
+        _connect(silent: true);
+      }
+    });
   }
 
   void _onTabChanged(int index) {
@@ -108,7 +172,7 @@ class _MainScreenState extends State<MainScreen> {
     });
     
     if (_approvalStatus == "Trusted") {
-      _connect();
+      _connect(silent: true);
     }
   }
 
@@ -228,10 +292,10 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  void _connect() async {
+  void _connect({bool silent = false}) async {
     _socket?.close();
     if (_isConnected) return;
-    HapticFeedback.mediumImpact();
+    if (!silent) HapticFeedback.mediumImpact();
     try {
       int port = int.tryParse(_portController.text) ?? 12345;
       final s = await SecureSocket.connect(
@@ -245,6 +309,10 @@ class _MainScreenState extends State<MainScreen> {
         _isConnected = true;
         _socketStream = s.asBroadcastStream();
       });
+      if (_approvalStatus == "Trusted") {
+         _showConnectedNotification();
+         _updateServiceStatus("Connected to PC");
+      }
       _startPolling(); 
       _socketStream!.listen(
         (data) {
@@ -258,7 +326,10 @@ class _MainScreenState extends State<MainScreen> {
                 if (json['type'] == 'pair_response') {
                    final status = json['data']['status'];
                    _updateApprovalStatus(status);
-                   if (status == "Trusted") HapticFeedback.heavyImpact();
+                   if (status == "Trusted") {
+                      HapticFeedback.heavyImpact();
+                      _showConnectedNotification();
+                   }
                    if (status == "Blocked") {
                       HapticFeedback.vibrate();
                       _disconnect();
@@ -272,7 +343,7 @@ class _MainScreenState extends State<MainScreen> {
         onError: (e) => _onDisconnect(),
       );
     } catch (e) {
-      _showError("Connectivity Error: Host unreachable.");
+      if (!silent) _showError("Connectivity Error: Host unreachable.");
     }
   }
 
@@ -346,6 +417,8 @@ class _MainScreenState extends State<MainScreen> {
         _socket = null;
         _socketStream = null;
       });
+      _hideNotification();
+      if (_approvalStatus == "Trusted") _updateServiceStatus("Searching for PC...");
     }
   }
 
@@ -358,6 +431,30 @@ class _MainScreenState extends State<MainScreen> {
       _socket = null;
       _socketStream = null;
     });
+  }
+
+  void _updateServiceStatus(String content) {
+    FlutterBackgroundService().invoke("updateStatus", {"content": content});
+  }
+
+  Future<void> _showConnectedNotification() async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails('connection_status', 'Connection Status',
+            channelDescription: 'Shows if PC is connected',
+            importance: Importance.low,
+            priority: Priority.low,
+            ongoing: true,
+            autoCancel: false,
+            showWhen: false,
+            icon: '@mipmap/ic_launcher');
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    await flutterLocalNotificationsPlugin.show(
+        0, 'Wayland Connect', 'Connected to PC', platformChannelSpecifics);
+  }
+
+  Future<void> _hideNotification() async {
+    await flutterLocalNotificationsPlugin.cancel(0);
   }
 
   void _showError(String msg) {
