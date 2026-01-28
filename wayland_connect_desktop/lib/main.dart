@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'dart:async';
 
 Future<String> _getIconPath() async {
@@ -100,6 +101,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
   bool _requireApproval = true;
   bool _encryptionEnabled = true;
   int _selectedMonitor = 0;
+  List<Display> _monitors = [];
   final TextEditingController _portController = TextEditingController(text: "12345");
 
   @override
@@ -109,11 +111,29 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
     windowManager.addListener(this);
     _initSystemTray();
     _loadSettings().then((_) {
+      _loadMonitors();
       _startBackendServer();
       _connectToBackend();
       _getIpAddress();
       _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshStatus());
     });
+  }
+
+  Future<void> _loadMonitors() async {
+    try {
+      List<Display> displays = await screenRetriever.getAllDisplays();
+      if (mounted) {
+        setState(() {
+          _monitors = displays;
+          // Ensure selected monitor index is valid
+          if (_selectedMonitor >= _monitors.length) {
+            _selectedMonitor = 0;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to load monitors: $e");
+    }
   }
 
   Future<void> _getIpAddress() async {
@@ -897,11 +917,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
               dropdownColor: const Color(0xFF1E1E1E),
               isExpanded: true,
               style: const TextStyle(color: Colors.white),
-              items: const [
-                DropdownMenuItem(value: 0, child: Text("Main Monitor (0)")),
-                DropdownMenuItem(value: 1, child: Text("Second Monitor (1)")),
-                DropdownMenuItem(value: 2, child: Text("Third Monitor (2)")),
-              ],
+              items: _monitors.isEmpty 
+              ? const [DropdownMenuItem(value: 0, child: Text("Detecting Monitors..."))]
+              : _monitors.asMap().entries.map((entry) {
+                  int idx = entry.key;
+                  Display d = entry.value;
+                  return DropdownMenuItem(
+                    value: idx,
+                    child: Text("Monitor $idx: ${d.name} (${d.size.width.toInt()}x${d.size.height.toInt()})"),
+                  );
+                }).toList(),
               onChanged: (val) async {
                 if (val != null) {
                   setState(() => _selectedMonitor = val);
