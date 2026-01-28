@@ -98,7 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
   bool _minimizeToTray = true;
   bool _darkMode = true;
   bool _requireApproval = true;
-  bool _encryptionEnabled = false;
+  bool _encryptionEnabled = true;
   int _selectedMonitor = 0;
   final TextEditingController _portController = TextEditingController(text: "12345");
 

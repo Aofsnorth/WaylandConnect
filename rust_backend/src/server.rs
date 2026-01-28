@@ -15,36 +15,46 @@ use std::fs::File;
 use std::io::{Read, Write, BufReader as StdBufReader};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::{ServerConfig, Certificate, PrivateKey};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn get_config_dir() -> PathBuf {
+    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push("wayland-connect");
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(&path);
+    }
+    path
+}
 
 fn get_tls_config() -> anyhow::Result<ServerConfig> {
-    let cert_path = "cert.pem";
-    let key_path = "key.pem";
+    let config_dir = get_config_dir();
+    let cert_path = config_dir.join("cert.pem");
+    let key_path = config_dir.join("key.pem");
 
-    if !Path::new(cert_path).exists() || !Path::new(key_path).exists() {
+    if !cert_path.exists() || !key_path.exists() {
         info!("🔐 Generating new self-signed TLS certificate...");
         let cert = rcgen::generate_simple_self_signed(vec!["waylandconnect.local".to_string()])?;
         
-        let mut cert_file = File::create(cert_path)?;
+        let mut cert_file = File::create(&cert_path)?;
         cert_file.write_all(cert.serialize_pem()?.as_bytes())?;
         
-        let mut key_file = File::create(key_path)?;
+        let mut key_file = File::create(&key_path)?;
         key_file.write_all(cert.serialize_private_key_pem().as_bytes())?;
-        info!("✅ TLS certificate generated.");
+        info!("✅ TLS certificate generated at {:?}", cert_path);
     }
 
-    let cert_file = File::open(cert_path)?;
+    let cert_file = File::open(&cert_path)?;
     let mut reader = StdBufReader::new(cert_file);
     let certs = rustls_pemfile::certs(&mut reader)?
         .into_iter()
         .map(Certificate)
         .collect();
 
-    let key_file = File::open(key_path)?;
+    let key_file = File::open(&key_path)?;
     let mut reader = StdBufReader::new(key_file);
     let mut keys = rustls_pemfile::pkcs8_private_keys(&mut reader)?;
     if keys.is_empty() {
-        let key_file = File::open(key_path)?;
+        let key_file = File::open(&key_path)?;
         let mut reader = StdBufReader::new(key_file);
         keys = rustls_pemfile::rsa_private_keys(&mut reader)?;
     }
@@ -68,7 +78,10 @@ struct AppState {
 
 impl AppState {
     fn load() -> Self {
-        if let Ok(mut file) = File::open("devices.json") {
+        let config_dir = get_config_dir();
+        let file_path = config_dir.join("devices.json");
+        
+        if let Ok(mut file) = File::open(file_path) {
             let mut content = String::new();
             if file.read_to_string(&mut content).is_ok() {
                 if let Ok(state) = serde_json::from_str::<AppState>(&content) {
@@ -80,8 +93,11 @@ impl AppState {
     }
 
     fn save(&self) {
+        let config_dir = get_config_dir();
+        let file_path = config_dir.join("devices.json");
+        
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            if let Ok(mut file) = File::create("devices.json") {
+            if let Ok(mut file) = File::create(file_path) {
                 let _ = file.write_all(json.as_bytes());
             }
         }
