@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -451,7 +453,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _showConnectedNotification() async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails('connection_status', 'Connection Status',
             channelDescription: 'Shows if PC is connected',
             importance: Importance.low,
@@ -460,7 +462,7 @@ class _MainScreenState extends State<MainScreen> {
             autoCancel: false,
             showWhen: false,
             icon: '@mipmap/ic_launcher');
-    const NotificationDetails platformChannelSpecifics =
+    final NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
     await flutterLocalNotificationsPlugin.show(
         0, 'Wayland Connect', 'Connected to PC', platformChannelSpecifics);
