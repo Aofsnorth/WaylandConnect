@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-01-28
+
+### 🚀 Added
+- **Linux**: Added "Start on Boot" functionality.
+- **Makefile**: Added `appimage` build target.
+
+### 🩹 Fixed
+- **Android**: Fixed build crash related to notification content.
+- **Android**: Added back navigation confirmation.
+- **CI/CD**: Fixed Android build workflow.
+
 ## [1.0.3] - 2026-01-28
 
 ### 🚀 Added

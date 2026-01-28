@@ -1,5 +1,11 @@
-.PHONY: all build build-backend build-overlay build-desktop build-android test clean help
+.PHONY: all build build-backend build-overlay build-desktop build-android test clean help appimage
 .DEFAULT_GOAL := help
+
+appimage: ## Build the AppImage for Linux
+	@echo "📦 Building AppImage..."
+	@chmod +x build_appimage.sh
+	./build_appimage.sh
+
 
 # Variables
 CARGO := cargo
