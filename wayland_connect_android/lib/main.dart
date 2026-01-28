@@ -8,6 +8,8 @@ import 'dart:convert';
 import 'dart:ui';
 import 'dart:async';
 import 'package:window_manager/window_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 
 import 'screens/touchpad_screen.dart';
 import 'screens/keyboard_screen.dart';
@@ -34,10 +36,13 @@ Future<void> initializeService() async {
       .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
+  final prefs = await SharedPreferences.getInstance();
+  final bool autoStart = prefs.getBool('start_on_boot') ?? true;
+
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
-      autoStart: true,
+      autoStart: autoStart,
       isForegroundMode: true,
       notificationChannelId: 'connection_status',
       initialNotificationTitle: 'Wayland Connect',
@@ -47,6 +52,7 @@ Future<void> initializeService() async {
     iosConfiguration: IosConfiguration(),
   );
 }
+
 
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
@@ -90,7 +96,14 @@ void main() async {
   const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
   const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  
+  // Request notifications for Android 13+
+  if (Platform.isAndroid) {
+    await Permission.notification.request();
+  }
+
   await initializeService();
+
 
   runApp(const WaylandConnectApp());
 }

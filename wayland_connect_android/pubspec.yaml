@@ -22,6 +22,7 @@ dependencies:
   screen_retriever: ^0.2.0
   flutter_local_notifications: ^20.0.0
   flutter_background_service: ^5.1.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

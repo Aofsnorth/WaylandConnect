@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'settings_screen.dart';
+
 
 class LandingScreen extends StatelessWidget {
   final String approvalStatus;
@@ -39,6 +41,18 @@ class LandingScreen extends StatelessWidget {
     Color accentColor = isAmber ? Colors.amberAccent : (isRed ? Colors.redAccent : Colors.white24);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: Colors.white54),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (ctx) => const SettingsScreen())),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
