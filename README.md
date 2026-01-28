@@ -35,8 +35,13 @@ Wayland Connect is a professional remote control and presentation tool tailor-ma
 
 ## 📥 Installation
 
-### Linux (Server)
-Run the automated installer script to build and install all necessary components:
+### Linux (Build from Source)
+**Prerequisites:**
+- [Rust](https://www.rust-lang.org/tools/install) installed.
+- [Flutter](https://flutter.dev/docs/get-started/install/linux) installed.
+- System dependencies: `libayatana-appindicator3-dev`, `libgtk-3-dev`, `libgtk-4-dev`, `libwayland-dev`, `libudev-dev`.
+
+Run the automated installer script to build and install all components:
 
 ```bash
 git clone https://github.com/Aofsnorth/WaylandConnect.git
@@ -44,7 +49,8 @@ cd WaylandConnect
 chmod +x install.sh
 ./install.sh
 ```
-*The script installs the app to `/opt/wayland-connect`, configures udev rules for input, and creates a desktop shortcut.*
+*The script compiles the project and installs it to `/opt/wayland-connect`, configures udev rules, and creates a desktop shortcut.*
+
 
 ### Android (Client)
 Download the latest APK from the [Releases](https://github.com/Aofsnorth/WaylandConnect/releases) page.
@@ -92,9 +98,14 @@ Wayland Connect adalah aplikasi *remote control* dan alat presentasi modern yang
 - **Android**: Versi 8.0 (Oreo) atau lebih tinggi.
 - **Jaringan**: PC dan Android harus berada di jaringan Wi-Fi/LAN yang sama.
 
-## 📥 Instalasi (Linux)
+## 📥 Instalasi (Linux - Build from Source)
 
-Cukup jalankan script installer otomatis untuk membangun (*build*) dan menginstal semua komponen:
+**Prasyarat:**
+- [Rust](https://www.rust-lang.org/tools/install) telah terinstal.
+- [Flutter](https://flutter.dev/docs/get-started/install/linux) telah terinstal.
+- Dependensi sistem: `libayatana-appindicator3-dev`, `libgtk-3-dev`, `libgtk-4-dev`, `libwayland-dev`, `libudev-dev`.
+
+Jalankan script installer otomatis untuk membangun (*build*) dan menginstal:
 
 ```bash
 git clone https://github.com/Aofsnorth/WaylandConnect.git
@@ -102,7 +113,8 @@ cd WaylandConnect
 chmod +x install.sh
 ./install.sh
 ```
-*Script ini akan menginstal aplikasi ke `/opt/wayland-connect`, mengatur udev rules untuk input, dan membuat shortcut di menu aplikasi Anda.*
+*Script ini akan mengkompilasi aplikasi, menginstalnya ke `/opt/wayland-connect`, mengatur udev rules, dan membuat shortcut.*
+
 
 ## 📱 Instalasi (Android)
 

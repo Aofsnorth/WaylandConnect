@@ -19,7 +19,7 @@ This is a **monorepo** containing multiple components:
 - **Flutter**: Latest stable version (`flutter doctor`).
 - **System Dependencies** (Debian/Ubuntu):
   ```bash
-  sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libgtk-4-dev liblzma-dev libstdc++-12-dev libwayland-dev libxkbcommon-dev libgtk4-layer-shell-dev
+  sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libgtk-4-dev liblzma-dev libstdc++-12-dev libwayland-dev libxkbcommon-dev libgtk4-layer-shell-dev libayatana-appindicator3-dev libudev-dev
   ```
 
 ### Building
