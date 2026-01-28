@@ -660,7 +660,7 @@ class _MainScreenState extends State<MainScreen> {
             child: Theme(
               data: Theme.of(context).copyWith(
                 navigationBarTheme: NavigationBarThemeData(
-                  indicatorColor: Colors.white,
+                  indicatorColor: MaterialStateProperty.all(Colors.white),
                   labelTextStyle: MaterialStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
                   iconTheme: MaterialStateProperty.all(const IconThemeData(color: Colors.white54)),
                 ),
