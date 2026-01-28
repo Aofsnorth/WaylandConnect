@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -22,12 +22,12 @@ import 'screens/disconnect_screen.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+final fln.FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = fln.FlutterLocalNotificationsPlugin();
 
 Future<void> initializeService() async {
   final service = FlutterBackgroundService();
 
-  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  const fln.AndroidNotificationChannel channel = fln.AndroidNotificationChannel(
     'connection_status', 
     'Connection Status',
     description: 'Shows if PC is connected',
@@ -35,7 +35,7 @@ Future<void> initializeService() async {
   );
 
   await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
   final prefs = await SharedPreferences.getInstance();
@@ -95,8 +95,8 @@ void main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // Force edge-to-edge
-  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+  const fln.AndroidInitializationSettings initializationSettingsAndroid = fln.AndroidInitializationSettings('@mipmap/ic_launcher');
+  const fln.InitializationSettings initializationSettings = fln.InitializationSettings(android: initializationSettingsAndroid);
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
   
   // Request notifications for Android 13+
@@ -453,17 +453,17 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _showConnectedNotification() async {
-    final AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails('connection_status', 'Connection Status',
+    final fln.AndroidNotificationDetails androidPlatformChannelSpecifics =
+        fln.AndroidNotificationDetails('connection_status', 'Connection Status',
             channelDescription: 'Shows if PC is connected',
-            importance: Importance.low,
-            priority: Priority.low,
+            importance: fln.Importance.low,
+            priority: fln.Priority.low,
             ongoing: true,
             autoCancel: false,
             showWhen: false,
             icon: '@mipmap/ic_launcher');
-    final NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
+    final fln.NotificationDetails platformChannelSpecifics =
+        fln.NotificationDetails(android: androidPlatformChannelSpecifics);
     await flutterLocalNotificationsPlugin.show(
         0, 'Wayland Connect', 'Connected to PC', platformChannelSpecifics);
   }
@@ -660,9 +660,9 @@ class _MainScreenState extends State<MainScreen> {
             child: Theme(
               data: Theme.of(context).copyWith(
                 navigationBarTheme: NavigationBarThemeData(
-                  indicatorColor: MaterialStateProperty.all(Colors.white),
-                  labelTextStyle: MaterialStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
-                  iconTheme: MaterialStateProperty.all(const IconThemeData(color: Colors.white54)),
+                  indicatorColor: Colors.white,
+                  labelTextStyle: WidgetStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
+                  iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white54)),
                 ),
               ),
               child: NavigationBar(
