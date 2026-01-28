@@ -848,7 +848,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
         const Text("Security & Trust", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 40),
         _buildSwitch("Require Approval for New Devices", "Always ask before pairing a new device.", _requireApproval, (v) => setState(() => _requireApproval = v)),
-        _buildSwitch("Require Approval for New Devices", "Always ask before pairing a new device.", _requireApproval, (v) => setState(() => _requireApproval = v)),
         // Encryption is mandatory and enabled by default in backend v1.0.3+
         const SizedBox(height: 24),
         const Text("Access Control", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
