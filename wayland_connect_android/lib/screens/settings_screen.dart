@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'dart:ui';
 
+import 'dart:io';
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -34,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final nStatus = await Permission.notification.status;
     final bStatus = await Permission.ignoreBatteryOptimizations.status;
     
+    if (!mounted) return;
     setState(() {
       _notificationGranted = nStatus.isGranted;
       _batteryOptimized = bStatus.isGranted;
@@ -45,7 +48,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('start_on_boot', value);
     setState(() => _startOnBoot = value);
     
-    // Update service configuration
+    // Linux Autostart Logic
+    if (Platform.isLinux) {
+      try {
+        final String home = Platform.environment['HOME'] ?? '/';
+        final String autostartDir = '$home/.config/autostart';
+        final File desktopFile = File('$autostartDir/wayland_connect.desktop');
+
+        if (value) {
+          final Directory dir = Directory(autostartDir);
+          if (!await dir.exists()) {
+            await dir.create(recursive: true);
+          }
+
+          final String execPath = Platform.environment['APPIMAGE'] ?? Platform.resolvedExecutable;
+          
+          final String content = '''[Desktop Entry]
+Type=Application
+Name=Wayland Connect
+Comment=Remote control receiver
+Exec=$execPath
+Icon=wayland_connect
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+''';
+          await desktopFile.writeAsString(content);
+        } else {
+          if (await desktopFile.exists()) {
+            await desktopFile.delete();
+          }
+        }
+      } catch (e) {
+        debugPrint("Error toggling autostart: $e");
+      }
+      return; 
+    }
+
+    // Update service configuration (Mobile)
     if (value) {
       FlutterBackgroundService().invoke("setAsBackground");
     } else {
@@ -101,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 48),
           const Center(
             child: Text(
-              "Wayland Connect v1.0.3",
+              "Wayland Connect v1.0.4",
               style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 2),
             ),
           ),

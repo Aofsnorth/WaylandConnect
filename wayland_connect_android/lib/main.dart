@@ -35,12 +35,32 @@ Future<void> initializeService() async {
     'connection_status', 
     'Connection Status',
     description: 'Shows if PC is connected',
-    importance: fln.Importance.high,
+    importance: fln.Importance.max,
+    playSound: false,
+    enableVibration: false,
+    showBadge: true,
   );
 
-  await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>()
-      ?.createNotificationChannel(channel);
+  const fln.AndroidInitializationSettings initializationSettingsAndroid = fln.AndroidInitializationSettings('@mipmap/ic_launcher');
+  const fln.InitializationSettings initializationSettings = fln.InitializationSettings(android: initializationSettingsAndroid);
+  await flutterLocalNotificationsPlugin.initialize(
+    settings: initializationSettings,
+    onDidReceiveNotificationResponse: (details) {
+      if (details.actionId == 'stop_service') {
+        service.invoke("stopService");
+      }
+    },
+    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+  );
+  final fln.AndroidFlutterLocalNotificationsPlugin? androidImplementation = 
+      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
+  
+  await androidImplementation?.createNotificationChannel(channel);
+  
+  // Request permission explicitly for Android 13+
+  if (Platform.isAndroid) {
+     await androidImplementation?.requestNotificationsPermission();
+  }
 
   final prefs = await SharedPreferences.getInstance();
   final bool autoStart = prefs.getBool('start_on_boot') ?? true;
@@ -51,8 +71,8 @@ Future<void> initializeService() async {
       autoStart: autoStart,
       isForegroundMode: true,
       notificationChannelId: 'connection_status',
-      initialNotificationTitle: 'Wayland Connect',
-      initialNotificationContent: 'Searching for PC...',
+      initialNotificationTitle: 'searching for pc...',
+      initialNotificationContent: 'preparing connection...',
       foregroundServiceNotificationId: 888,
     ),
     iosConfiguration: IosConfiguration(),
@@ -63,16 +83,51 @@ Future<void> initializeService() async {
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
-  bool isForeground = false;
   
   if (service is AndroidServiceInstance) {
+    service.setAsForegroundService();
+    
+    final fln.FlutterLocalNotificationsPlugin notifications = fln.FlutterLocalNotificationsPlugin();
+
+    void updateNotification(String content) async {
+      await notifications.show(
+        id: 888,
+        title: content, // Just show the status (e.g., 'connected to desktop') in the title
+        body: null,    // Hide body for a cleaner single-line look
+        notificationDetails: const fln.NotificationDetails(
+          android: fln.AndroidNotificationDetails(
+            'connection_status',
+            'Connection Status',
+            channelDescription: 'Shows connection state',
+            importance: fln.Importance.max,
+            priority: fln.Priority.high,
+            ongoing: true,
+            showWhen: false,
+            onlyAlertOnce: true,
+            color: Color(0xFF000000), 
+            category: fln.AndroidNotificationCategory.service,
+            visibility: fln.NotificationVisibility.public,
+            actions: <fln.AndroidNotificationAction>[
+              fln.AndroidNotificationAction(
+                'stop_service',
+                'DISCONNECT',
+                showsUserInterface: false,
+                cancelNotification: true,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Immediate notification
+    updateNotification("service active...");
+
     service.on('setAsForeground').listen((event) {
-      isForeground = true;
       service.setAsForegroundService();
     });
 
     service.on('setAsBackground').listen((event) {
-      isForeground = false;
       service.setAsBackgroundService();
     });
 
@@ -81,17 +136,9 @@ void onStart(ServiceInstance service) async {
     });
 
     service.on('updateStatus').listen((event) {
-      service.setForegroundNotificationInfo(
-        title: "Wayland Connect",
-        content: event?['content'] ?? "Running",
-      );
+      String status = event?['content'] ?? "service running";
+      updateNotification(status.toLowerCase());
     });
-
-    // Initial notification update
-    service.setForegroundNotificationInfo(
-      title: "Wayland Connect",
-      content: "Service Initialized",
-    );
   }
 }
 
@@ -122,14 +169,17 @@ void main() async {
   ));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // Force edge-to-edge
   
-  // Request notifications for Android 13+
-  if (Platform.isAndroid) {
-    await Permission.notification.request();
-  }
-
-  await initializeService();
+  // Don't request here, do it in the UI or after frame
+  initializeService();
 
   runApp(const WaylandConnectApp());
+}
+
+@pragma('vm:entry-point')
+void notificationTapBackground(fln.NotificationResponse notificationResponse) {
+  if (notificationResponse.actionId == 'stop_service') {
+    FlutterBackgroundService().invoke("stopService");
+  }
 }
 
 class WaylandConnectApp extends StatelessWidget {
@@ -173,6 +223,7 @@ class _MainScreenState extends State<MainScreen> {
   Stream<Uint8List>? _socketStream;
   bool _isScrolled = false;
   OverlayEntry? _errorOverlay;
+  String? _serverName;
 
   @override
   void initState() {
@@ -206,11 +257,11 @@ class _MainScreenState extends State<MainScreen> {
       _ipController.text = prefs.getString('pc_ip') ?? "192.168.1.1";
       _portController.text = prefs.getString('pc_port') ?? "12345";
       _approvalStatus = prefs.getString('approval_status') ?? "Unknown";
+      _serverName = prefs.getString('server_name');
     });
     
-    if (_approvalStatus == "Trusted") {
-      _connect(silent: true);
-    }
+    _connect(silent: true);
+    if (_approvalStatus == "Trusted") _updateServiceStatus("searching for pc...");
   }
 
   void _showConnectionDialog() {
@@ -361,14 +412,18 @@ class _MainScreenState extends State<MainScreen> {
               if (line.isEmpty) continue;
               try {
                 final json = jsonDecode(line);
-                if (json['type'] == 'pair_response') {
-                   final status = json['data']['status'];
-                   _updateApprovalStatus(status);
-                   if (status == "Trusted") {
-                      HapticFeedback.heavyImpact();
-                      _showConnectedNotification();
-                      FlutterBackgroundService().invoke("setAsForeground");
-                   }
+                 if (json['type'] == 'pair_response') {
+                    final status = json['data']['status'];
+                    final sName = json['data']['server_name'];
+                    if (sName != null) setState(() => _serverName = sName);
+                    
+                    _updateApprovalStatus(status);
+                    if (status == "Trusted") {
+                       HapticFeedback.heavyImpact();
+                       _showConnectedNotification();
+                       _updateServiceStatus("connected to ${_serverName ?? 'pc'}");
+                       FlutterBackgroundService().invoke("setAsForeground");
+                    }
                    if (status == "Blocked") {
                       HapticFeedback.vibrate();
                       _disconnect();
@@ -429,6 +484,11 @@ class _MainScreenState extends State<MainScreen> {
     setState(() => _approvalStatus = status);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('approval_status', status);
+    if (_serverName != null) {
+      await prefs.setString('server_name', _serverName!);
+    } else {
+      await prefs.remove('server_name');
+    }
   }
 
   void _startPolling() {
@@ -509,10 +569,13 @@ class _MainScreenState extends State<MainScreen> {
         _socket = null;
         _socketStream = null;
       });
-      _hideNotification();
-      FlutterBackgroundService().invoke("setAsBackground");
-      if (_approvalStatus == "Trusted") _updateServiceStatus("Searching for PC...");
-    }
+       _hideNotification();
+       FlutterBackgroundService().invoke("setAsBackground");
+       if (_approvalStatus == "Trusted") {
+         _updateServiceStatus("searching for pc...");
+         setState(() => _serverName = null);
+       }
+     }
   }
 
   void _resetConnectionState() async {
@@ -531,12 +594,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _showConnectedNotification() async {
-    // Notification is now handled by FlutterBackgroundService
-    // No manual notification needed
+    // We use the background service to manage the persistent notification
+    // as it is more reliable for 'ongoing' services on Android.
+    FlutterBackgroundService().invoke("updateStatus", {"content": "Connected to PC"});
   }
 
   Future<void> _hideNotification() async {
-    // Notification is now handled by FlutterBackgroundService
+    FlutterBackgroundService().invoke("updateStatus", {"content": "Searching for PC..."});
   }
 
   void _showError(String msg) {
@@ -591,14 +655,47 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  Future<bool> _showExitConfirmation() async {
+    return await showDialog(
+      context: context,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.white.withOpacity(0.1))),
+          title: const Text("Exit App", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: const Text("Are you sure you want to close Wayland Connect?", style: TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCEL", style: TextStyle(color: Colors.white38))),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true), 
+              style: TextButton.styleFrom(backgroundColor: Colors.redAccent.withOpacity(0.1)),
+              child: const Text("EXIT", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+            ),
+          ],
+        ),
+      ),
+    ) ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_approvalStatus != "Trusted") {
-      return LandingScreen(
-        approvalStatus: _approvalStatus,
-        isConnected: _isConnected,
-        onConnect: _showConnectionDialog,
-        onReset: _resetConnectionState,
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final shouldExit = await _showExitConfirmation();
+          if (shouldExit) {
+            SystemNavigator.pop();
+          }
+        },
+        child: LandingScreen(
+          approvalStatus: _approvalStatus,
+          isConnected: _isConnected,
+          onConnect: _showConnectionDialog,
+          onReset: _resetConnectionState,
+        ),
       );
     }
 
@@ -606,73 +703,124 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, constraints) {
         final bool isDesktop = constraints.maxWidth > 800;
         
-        return Scaffold(
-          extendBodyBehindAppBar: true,
-          appBar: isDesktop ? null : (_currentIndex == 4 ? null : (_isScrolled
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(80),
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: AppBar(
-                        backgroundColor: Colors.black.withOpacity(0.3),
-                        elevation: 0,
-                        toolbarHeight: 80,
-                        leading: IconButton(
-                          icon: const Icon(Icons.link_off, color: Colors.white70),
-                          onPressed: () { _disconnect(); _resetConnectionState(); },
-                        ),
-                        actions: [
-                          IconButton(
-                            icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                            onPressed: () => setState(() => _currentIndex = 4),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        centerTitle: true,
-                        title: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.asset('assets/images/app_logo.png', width: 40, height: 40, fit: BoxFit.cover),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildStatusDot(),
-                          ],
-                        ),
+        // Use a local variable to ensure consistency during rebuilds
+        final int safeIndex = (_currentIndex >= 0 && _currentIndex < 4) ? _currentIndex : (_currentIndex == 4 ? 0 : 0);
+
+        Widget? bottomBar;
+        if (!isDesktop && _currentIndex != 4) {
+          bottomBar = Container(
+            padding: const EdgeInsets.only(top: 10),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black54],
+              ),
+            ),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                navigationBarTheme: NavigationBarThemeData(
+                  indicatorColor: Colors.white,
+                  labelTextStyle: WidgetStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
+                  iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white54)),
+                ),
+              ),
+              child: NavigationBar(
+                height: 70,
+                backgroundColor: Colors.transparent,
+                indicatorColor: Colors.white,
+                elevation: 0,
+                selectedIndex: safeIndex,
+                onDestinationSelected: (index) {
+                  if (index >= 0 && index < 4) {
+                    HapticFeedback.selectionClick();
+                    _onTabChanged(index);
+                  }
+                },
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.touch_app_outlined),
+                    selectedIcon: Icon(Icons.touch_app, color: Colors.black),
+                    label: 'Touchpad',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.keyboard_outlined),
+                    selectedIcon: Icon(Icons.keyboard, color: Colors.black),
+                    label: 'Keyboard',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.music_note_outlined),
+                    selectedIcon: Icon(Icons.music_note, color: Colors.black),
+                    label: 'Media',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.stars_outlined),
+                    selectedIcon: Icon(Icons.stars, color: Colors.black),
+                    label: 'Present',
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            if (_currentIndex != 0) {
+              setState(() => _currentIndex = 0);
+            } else {
+              final shouldExit = await _showExitConfirmation();
+              if (shouldExit) {
+                SystemNavigator.pop();
+              }
+            }
+          },
+          child: Scaffold(
+            extendBodyBehindAppBar: true,
+            appBar: isDesktop ? null : AppBar(
+              backgroundColor: _isScrolled ? Colors.black.withOpacity(0.3) : Colors.transparent,
+              elevation: 0,
+              toolbarHeight: 80,
+              flexibleSpace: _isScrolled
+                  ? ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(color: Colors.transparent),
                       ),
+                    )
+                  : null,
+              leading: _currentIndex == 4
+                  ? IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                      onPressed: () => setState(() => _currentIndex = 0),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.link_off, color: Colors.white70),
+                      onPressed: () { _disconnect(); _resetConnectionState(); },
                     ),
+              actions: [
+                if (_currentIndex != 4)
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+                    onPressed: () => setState(() => _currentIndex = 4),
                   ),
-                )
-              : AppBar(
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  toolbarHeight: 80,
-                  leading: IconButton(
-                    icon: const Icon(Icons.link_off, color: Colors.white70),
-                    onPressed: () { _disconnect(); _resetConnectionState(); },
+                const SizedBox(width: 12),
+              ],
+              centerTitle: true,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset('assets/images/app_logo.png', width: 40, height: 40, fit: BoxFit.cover),
                   ),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                      onPressed: () => setState(() => _currentIndex = 4),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  centerTitle: true,
-                  title: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.asset('assets/images/app_logo.png', width: 40, height: 40, fit: BoxFit.cover),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildStatusDot(),
-                    ],
-                  ),
-                ))),
+                  const SizedBox(width: 12),
+                  _buildStatusDot(),
+                ],
+              ),
+            ),
           body: Row(
             children: [
               if (isDesktop) 
@@ -730,65 +878,9 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ],
           ),
-          bottomNavigationBar: isDesktop ? null : Container(
-            padding: const EdgeInsets.only(top: 10),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black54],
-              ),
-            ),
-            child: Theme(
-              data: Theme.of(context).copyWith(
-                navigationBarTheme: NavigationBarThemeData(
-                  indicatorColor: Colors.white,
-                  labelTextStyle: WidgetStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
-                  iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white54)),
-                ),
-              ),
-              child: NavigationBar(
-                height: 70,
-                backgroundColor: Colors.transparent, // Transparent for Glassmorphism feel
-                indicatorColor: Colors.white,
-                elevation: 0,
-                selectedIndex: _currentIndex,
-                onDestinationSelected: (index) {
-                  HapticFeedback.selectionClick();
-                  _onTabChanged(index);
-                },
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.touch_app_outlined),
-                    selectedIcon: Icon(Icons.touch_app, color: Colors.black),
-                    label: 'Touchpad',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.keyboard_outlined),
-                    selectedIcon: Icon(Icons.keyboard, color: Colors.black),
-                    label: 'Keyboard',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.music_note_outlined),
-                    selectedIcon: Icon(Icons.music_note, color: Colors.black),
-                    label: 'Media',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.stars_outlined),
-                    selectedIcon: Icon(Icons.stars, color: Colors.black),
-                    label: 'Present',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings, color: Colors.black),
-                    label: 'Settings',
-                  ),
-                ],
-              ),
-            ),
-          ),
+            bottomNavigationBar: bottomBar,
           extendBody: true, // Key property to extend content behind NavBar
-        );
+        ));
       }
     );
   }

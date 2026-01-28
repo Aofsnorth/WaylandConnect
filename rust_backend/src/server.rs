@@ -263,12 +263,17 @@ impl InputServer {
                                         });
                                     }
 
+                                    let server_name = std::process::Command::new("hostname").output()
+                                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                                        .unwrap_or_else(|_| "Linux PC".to_string());
+
                                     // Send Status Response back to Android
                                     let response = serde_json::json!({
                                         "type": "pair_response",
                                         "data": {
                                             "status": status,
-                                            "server_version": server_version
+                                            "server_version": server_version,
+                                            "server_name": server_name
                                         }
                                     });
                                     
