@@ -13,6 +13,7 @@ import 'screens/keyboard_screen.dart';
 import 'screens/landing_screen.dart';
 import 'screens/media_screen.dart';
 import 'screens/pointer_screen.dart';
+import 'screens/disconnect_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -329,6 +330,17 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onDisconnect() {
     if (mounted) {
+      if (_isConnected) {
+        // Only show screen if we were previously connected (not manual disconnect)
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (ctx) => DisconnectedScreen(
+              onReconnect: () => _connect(),
+            ),
+          ),
+        );
+      }
+      
       setState(() {
         _isConnected = false;
         _socket = null;

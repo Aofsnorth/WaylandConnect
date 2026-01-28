@@ -151,6 +151,6 @@ MyApplication* my_application_new() {
   g_set_prgname(APPLICATION_ID);
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
-                                     "application-id", "com.wayland.connect", "flags",
+                                     "application-id", "com.arthenyx.wayland_connect", "flags",
                                      G_APPLICATION_NON_UNIQUE, nullptr));
 }
