@@ -556,7 +556,7 @@ X-GNOME-Autostart-enabled=true
                                   children: [
                                     const Icon(Icons.info_outline, size: 10, color: Colors.white38),
                                     const SizedBox(width: 6),
-                                    Text("v1.0.0", style: TextStyle(
+                                    Text("v1.0.4", style: TextStyle(
                                       color: Colors.white70, 
                                       fontSize: 10,
                                       shadows: [
@@ -1009,7 +1009,55 @@ X-GNOME-Autostart-enabled=true
           icon: const Icon(Icons.restart_alt),
           label: const Text("Restart Service & Apply Port"),
           style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
-        )
+        ),
+        const SizedBox(height: 48),
+        const Text("System Update", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.02),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Checking for updates ensures you have the latest features and security fixes.", style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final url = Uri.parse("https://github.com/arthenyx/WaylandConnect/releases/latest");
+                        await Process.run('xdg-open', [url.toString()]);
+                      },
+                      icon: const Icon(Icons.system_update_alt),
+                      label: const Text("Check for Updates"),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20), foregroundColor: Colors.white, side: const BorderSide(color: Colors.white24)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        // For direct update, we could try running git pull and install.sh
+                        // but opening the repo is safer for now as we don't know where it's cloned.
+                        final url = Uri.parse("https://github.com/arthenyx/WaylandConnect");
+                        await Process.run('xdg-open', [url.toString()]);
+                      },
+                      icon: const Icon(Icons.code),
+                      label: const Text("Github Repo"),
+                      style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20), backgroundColor: Colors.white, foregroundColor: Colors.black),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 40),
       ],
     );
   }

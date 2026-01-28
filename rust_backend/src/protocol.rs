@@ -14,7 +14,7 @@ pub enum InputEvent {
     #[serde(rename = "keypress")]
     KeyPress { key: String },
     #[serde(rename = "pair_request")]
-    PairRequest { device_name: String, id: String },
+    PairRequest { device_name: String, id: String, #[serde(default)] version: String },
     
     // Management Commands
     #[serde(rename = "get_status")]
@@ -94,4 +94,8 @@ pub struct StatusResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PairResponse {
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }

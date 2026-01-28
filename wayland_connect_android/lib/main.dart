@@ -22,6 +22,9 @@ import 'screens/disconnect_screen.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 
 final fln.FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = fln.FlutterLocalNotificationsPlugin();
 
@@ -32,7 +35,7 @@ Future<void> initializeService() async {
     'connection_status', 
     'Connection Status',
     description: 'Shows if PC is connected',
-    importance: fln.Importance.low,
+    importance: fln.Importance.high,
   );
 
   await flutterLocalNotificationsPlugin
@@ -78,13 +81,17 @@ void onStart(ServiceInstance service) async {
     });
 
     service.on('updateStatus').listen((event) {
-      if (isForeground) {
-        service.setForegroundNotificationInfo(
-          title: "Wayland Connect",
-          content: event?['content'] ?? "Running",
-        );
-      }
+      service.setForegroundNotificationInfo(
+        title: "Wayland Connect",
+        content: event?['content'] ?? "Running",
+      );
     });
+
+    // Initial notification update
+    service.setForegroundNotificationInfo(
+      title: "Wayland Connect",
+      content: "Service Initialized",
+    );
   }
 }
 
@@ -366,6 +373,10 @@ class _MainScreenState extends State<MainScreen> {
                       HapticFeedback.vibrate();
                       _disconnect();
                    }
+                   if (status == "VersionMismatch") {
+                      _showVersionMismatchDialog(json['data']['message'] ?? "Update required.");
+                      _disconnect();
+                   }
                 }
               } catch (_) {}
             }
@@ -377,6 +388,41 @@ class _MainScreenState extends State<MainScreen> {
     } catch (e) {
       if (!silent) _showError("Connectivity Error: Host unreachable.");
     }
+  }
+
+  void _showVersionMismatchDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.update, color: Colors.orangeAccent),
+            SizedBox(width: 12),
+            Text("Update Required", style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Dimiss", style: TextStyle(color: Colors.white38)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+            onPressed: () async {
+              final url = Uri.parse("https://github.com/arthenyx/WaylandConnect/releases/latest");
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text("Update Now"),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateApprovalStatus(String status) async {
@@ -421,7 +467,21 @@ class _MainScreenState extends State<MainScreen> {
             deviceName = "Desktop Controller";
          }
        } catch (e) {}
-       final event = {"type": "pair_request", "data": {"device_name": deviceName, "id": deviceId}};
+
+       String version = "1.0.4"; // Fallback
+       try {
+          PackageInfo packageInfo = await PackageInfo.fromPlatform();
+          version = packageInfo.version;
+       } catch (_) {}
+
+       final event = {
+         "type": "pair_request", 
+         "data": {
+           "device_name": deviceName, 
+           "id": deviceId,
+           "version": version
+         }
+       };
        try { _socket!.write("${jsonEncode(event)}\n"); } catch (_) {}
      }
    }
@@ -562,6 +622,13 @@ class _MainScreenState extends State<MainScreen> {
                           icon: const Icon(Icons.link_off, color: Colors.white70),
                           onPressed: () { _disconnect(); _resetConnectionState(); },
                         ),
+                        actions: [
+                          IconButton(
+                            icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+                            onPressed: () => setState(() => _currentIndex = 4),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
                         centerTitle: true,
                         title: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -586,6 +653,13 @@ class _MainScreenState extends State<MainScreen> {
                     icon: const Icon(Icons.link_off, color: Colors.white70),
                     onPressed: () { _disconnect(); _resetConnectionState(); },
                   ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+                      onPressed: () => setState(() => _currentIndex = 4),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   centerTitle: true,
                   title: Row(
                     mainAxisSize: MainAxisSize.min,

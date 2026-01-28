@@ -154,9 +154,28 @@ impl InputServer {
                     match serde_json::from_str::<InputEvent>(&line) {
                         Ok(event) => {
                             match event {
-                                InputEvent::PairRequest { device_name, id } => {
-                                    info!("Pair request from: {} ({})", device_name, id);
+                                InputEvent::PairRequest { device_name, id, version } => {
+                                    info!("Pair request from: {} ({}) [v{}]", device_name, id, version);
                                     
+                                    let server_version = env!("CARGO_PKG_VERSION");
+                                    // Verify Version compatibility
+                                    if version != server_version && !version.is_empty() {
+                                        info!("⚠️ Version mismatch: Client v{}, Server v{}", version, server_version);
+                                        let response = serde_json::json!({
+                                            "type": "pair_response",
+                                            "data": {
+                                                "status": "VersionMismatch",
+                                                "server_version": server_version,
+                                                "message": format!("Update required! Server is v{}, but your app is v{}.", server_version, version)
+                                            }
+                                        });
+                                        if let Ok(json) = serde_json::to_string(&response) {
+                                            let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
+                                        }
+                                        let _ = writer.flush().await;
+                                        return; 
+                                    }
+
                                     let (status, should_notify) = {
                                         let mut state = STATE.lock().unwrap();
                                         
@@ -248,7 +267,8 @@ impl InputServer {
                                     let response = serde_json::json!({
                                         "type": "pair_response",
                                         "data": {
-                                            "status": status
+                                            "status": status,
+                                            "server_version": server_version
                                         }
                                     });
                                     
