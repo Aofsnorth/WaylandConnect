@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)](https://github.com/Aofsnorth/WaylandConnect/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Aofsnorth/WaylandConnect/release.yml?style=for-the-badge)](https://github.com/Aofsnorth/WaylandConnect/actions)
 [![License](https://img.shields.io/github/license/Aofsnorth/WaylandConnect?style=for-the-badge&color=green)](LICENSE)
-[![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)](https://github.com/vibe-code)
+![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
 
 [English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia)
@@ -12,7 +12,11 @@
 
 # 🇺🇸 English
 
+> [!CAUTION]
+> **Warning**: This application and its code were built with the assistance of **Artificial Intelligence (AI)**.
+
 Wayland Connect is a professional remote control and presentation tool tailor-made for the Linux Wayland ecosystem. It allows you to transform your Android device into a powerful controller for your PC with low latency and a premium aesthetic.
+
 
 ## 💎 Key Features
 
@@ -67,7 +71,11 @@ This project is licensed under the [MIT License](LICENSE).
 
 # 🇮🇩 Bahasa Indonesia
 
+> [!CAUTION]
+> **Peringatan**: Seluruh aplikasi dan kode program ini dibangun dengan bantuan **Kecerdasan Buatan (AI)**.
+
 Wayland Connect adalah aplikasi *remote control* dan alat presentasi modern yang dirancang khusus untuk ekosistem Linux (Wayland). Kendalikan PC Linux Anda langsung dari perangkat Android dengan latensi rendah dan antarmuka yang elegan.
+
 
 ## ✨ Fitur Utama
 
