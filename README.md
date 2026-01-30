@@ -7,12 +7,14 @@
 ![Downloads](https://img.shields.io/github/downloads/Aofsnorth/WaylandConnect/total?style=for-the-badge&color=orange)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
-![Stars](https://img.shields.io/github/stars/Aofsnorth/WaylandConnect?style=for-the-badge&color=gold)
-![Forks](https://img.shields.io/github/forks/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)
-![Issues](https://img.shields.io/github/github/issues/Aofsnorth/WaylandConnect?style=for-the-badge&color=red)
+![Activity Graph](https://github-readme-activity-graph.vercel.app/graph?username=Aofsnorth&repo=WaylandConnect&theme=react-dark&bg_color=050505&hide_border=true&line=39C16C&point=39C16C)
 
 ### 💬 Feedback & Support
-We love hearing from our users! If you find a bug, have a feature request, or just want to share your thoughts, please visit our **[Feedback Portal](https://aofsnorth.github.io/WaylandConnect/feedback/)**.
+We love hearing from our users! If you find a bug, have a feature request, or just want to share your thoughts, please visit our **[Feedback Portal](https://aofsnorth.github.io/WaylandConnect/)**.
+
+> [!IMPORTANT]
+> **If you see a 404 error above**, please enable GitHub Pages: 
+> Go to **Settings** -> **Pages** -> Set Source to **Deploy from a branch** -> Branch: **main** -> Folder: **/docs** -> Click **Save**.
 
 [English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia) | [Changelog](CHANGELOG.md)
 
