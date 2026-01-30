@@ -4,6 +4,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Aofsnorth/WaylandConnect/release.yml?style=for-the-badge)](https://github.com/Aofsnorth/WaylandConnect/actions)
 [![License](https://img.shields.io/github/license/Aofsnorth/WaylandConnect?style=for-the-badge&color=green)](LICENSE)
 ![Visitors](https://api.visitorbadge.io/api/visitors?path=Aofsnorth%2FWaylandConnect&label=PROJECT%20VIEWS&countColor=%23263238&style=for-the-badge)
+![Downloads](https://img.shields.io/github/downloads/Aofsnorth/WaylandConnect/total?style=for-the-badge&color=orange)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
 ### 📊 Repository Activity
