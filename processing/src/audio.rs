@@ -11,6 +11,12 @@ pub struct AudioAnalyzer {
     _stream: Option<cpal::Stream>,
 }
 
+impl Default for AudioAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AudioAnalyzer {
     pub fn new() -> Self {
         Self {

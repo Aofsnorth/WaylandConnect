@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)](https://github.com/Aofsnorth/WaylandConnect/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Aofsnorth/WaylandConnect/release.yml?style=for-the-badge)](https://github.com/Aofsnorth/WaylandConnect/actions)
 [![License](https://img.shields.io/github/license/Aofsnorth/WaylandConnect?style=for-the-badge&color=green)](LICENSE)
-![Visitors](https://api.visitorbadge.io/api/visitors?path=Aofsnorth%2FWaylandConnect&label=PROJECT%20VIEWS&countColor=%23263238&style=for-the-badge)
+[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FAofsnorth%2FWaylandConnect&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=VIEWS&edge_flat=false)](https://hits.seeyoufarm.com)
 ![Downloads](https://img.shields.io/github/downloads/Aofsnorth/WaylandConnect/total?style=for-the-badge&color=orange)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
@@ -13,7 +13,7 @@
 ### 💬 Feedback & Support
 We love hearing from our users! If you find a bug, have a feature request, or just want to share your thoughts, please visit our **[Feedback Portal](https://aofsnorth.github.io/WaylandConnect/feedback/)**.
 
-[English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia)
+[English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia) | [Changelog](CHANGELOG.md)
 
 ---
 
