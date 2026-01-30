@@ -1704,46 +1704,62 @@ class _StatusBadge extends StatelessWidget {
       }
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: mainColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: mainColor.withValues(alpha: 0.3)),
-        boxShadow: showGlow ? [
-           BoxShadow(color: mainColor.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 1),
-           if (isConnected) BoxShadow(color: Colors.blueAccent.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 5),
-        ] : [],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: mainColor,
-              shape: BoxShape.circle,
-              boxShadow: showGlow ? [
-                 BoxShadow(color: mainColor.withValues(alpha: 0.8), blurRadius: 8, spreadRadius: 2),
-              ] : [],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // For very small widths, show only the dot indicator
+        final bool isTiny = constraints.maxWidth < 80;
+        
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isTiny ? 8 : 16, 
+            vertical: isTiny ? 6 : 8
           ),
-          const SizedBox(width: 10),
-          Text(
-            text,
-            style: TextStyle(
-              color: mainColor,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-              shadows: (active && isConnected) ? [
-                 Shadow(color: Colors.blueAccent, blurRadius: 10),
-              ] : [],
-            ),
+          decoration: BoxDecoration(
+            color: mainColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: mainColor.withValues(alpha: 0.3)),
+            boxShadow: showGlow ? [
+               BoxShadow(color: mainColor.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 1),
+               if (isConnected) BoxShadow(color: Colors.blueAccent.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 5),
+            ] : [],
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: mainColor,
+                  shape: BoxShape.circle,
+                  boxShadow: showGlow ? [
+                     BoxShadow(color: mainColor.withValues(alpha: 0.8), blurRadius: 8, spreadRadius: 2),
+                  ] : [],
+                ),
+              ),
+              if (!isTiny) ...[
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: mainColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                      shadows: (active && isConnected) ? [
+                         Shadow(color: Colors.blueAccent, blurRadius: 10),
+                      ] : [],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }
     );
   }
 }
