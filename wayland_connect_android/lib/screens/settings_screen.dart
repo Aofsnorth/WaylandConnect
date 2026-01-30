@@ -288,7 +288,7 @@ X-GNOME-Autostart-enabled=true
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
-                              "WAYLAND CONNECT v1.0.1.1",
+                              "WAYLAND CONNECT v1.0.1",
                               style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 3),
                             ),
                           ),

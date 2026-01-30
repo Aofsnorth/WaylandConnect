@@ -47,10 +47,6 @@ impl ScreenStreamer {
         self.pointer_manager = Some(pm);
     }
 
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
-
     pub fn stop(&self) {
         if self.running.load(Ordering::SeqCst) {
              self.running.store(false, Ordering::SeqCst);
