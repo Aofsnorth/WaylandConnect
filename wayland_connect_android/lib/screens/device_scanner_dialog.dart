@@ -33,7 +33,20 @@ class _DeviceScannerDialogState extends State<DeviceScannerDialog> {
   @override
   void initState() {
     super.initState();
+    _loadSavedIP();
     _scanNetwork();
+  }
+
+  Future<void> _loadSavedIP() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIP = prefs.getString('pc_ip');
+    final savedPort = prefs.getString('pc_port');
+    if (savedIP != null) {
+      _ipController.text = savedIP;
+    }
+    if (savedPort != null) {
+      _portController.text = savedPort;
+    }
   }
 
   void _scanNetwork() async {

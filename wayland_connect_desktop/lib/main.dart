@@ -1264,10 +1264,14 @@ X-GNOME-Autostart-enabled=true
               const Icon(Icons.warning, color: Colors.red),
               const SizedBox(width: 16),
               Expanded(child: Text("${AppLocalizations.of(context)!.revokeAllAccess}\n${AppLocalizations.of(context)!.revokeAllDetails}", style: const TextStyle(color: Colors.red))),
-              OutlinedButton(
-                onPressed: _revokeAllAccess,
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                child: Text(AppLocalizations.of(context)!.revokeAllBtn),
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 0,
+                child: OutlinedButton(
+                  onPressed: _revokeAllAccess,
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                  child: Text(AppLocalizations.of(context)!.revokeAllBtn),
+                ),
               )
             ],
           ),
@@ -1599,7 +1603,7 @@ class _DeviceRow extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Flexible(
+                        Expanded(
                           child: Text(name, 
                             maxLines: 1, 
                             overflow: TextOverflow.ellipsis,
@@ -1611,19 +1615,28 @@ class _DeviceRow extends StatelessWidget {
                           ),
                         ),
                         if (isPending) 
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: _StatusChip(label: "REQUEST", color: Colors.amber),
+                          Flexible(
+                            flex: 0,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: _StatusChip(label: "REQUEST", color: Colors.amber),
+                            ),
                           ),
                         if (isBlocked) 
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: _StatusChip(label: "BLOCKED", color: Colors.red),
+                          Flexible(
+                            flex: 0,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: _StatusChip(label: "BLOCKED", color: Colors.red),
+                            ),
                           ),
                         if (isDeclined)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: _StatusChip(label: "REMOVED", color: Colors.white10, textColor: Colors.white38),
+                          Flexible(
+                            flex: 0,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: _StatusChip(label: "REMOVED", color: Colors.white10, textColor: Colors.white38),
+                            ),
                           ),
                       ],
                     ),
@@ -1636,12 +1649,17 @@ class _DeviceRow extends StatelessWidget {
                     if (isMirroring) ...[
                       const SizedBox(height: 12),
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.cast_connected, color: Colors.greenAccent, size: 12),
                           const SizedBox(width: 8),
-                          Text(
-                            "SCREEN MIRRORING ACTIVE",
-                            style: TextStyle(color: Colors.greenAccent.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+                          Flexible(
+                            child: Text(
+                              "SCREEN MIRRORING ACTIVE",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.greenAccent.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+                            ),
                           ),
                         ],
                       ),

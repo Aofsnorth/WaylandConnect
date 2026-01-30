@@ -241,15 +241,19 @@ class LandingGridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
     }
 
-    // Draw Scan Line
+    // Draw Top Glowing Line (Fixed at top as requested)
     final scanPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Colors.transparent, color.withOpacity(0.5), Colors.transparent],
-      ).createShader(Rect.fromLTWH(0, scanProgress * size.height - 100, size.width, 200));
+        colors: [color.withOpacity(0.5), Colors.transparent],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, 150));
 
-    canvas.drawRect(Rect.fromLTWH(0, scanProgress * size.height - 100, size.width, 200), scanPaint);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 150), scanPaint);
+    
+    // Draw thin solid line at the very top for definition
+    final topLinePaint = Paint()..color = color.withOpacity(0.8)..strokeWidth = 2;
+    canvas.drawLine(const Offset(0, 0), Offset(size.width, 0), topLinePaint);
   }
 
   @override
