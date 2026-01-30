@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1.1] - 2026-01-30
+
+### Fixed
+- Fixed backend processes staying active after closing the desktop application.
+- Fixed 404 error on feedback portal by restructuring `docs/` folder.
+- Fixed broken README activity graph by switching to a stable API.
+- Replaced confusing "Hits" badge with a proper "Unique Views" counter.
+- Cleaned up all remaining clippy warnings for a perfect CI build.
+
 ## [1.0.1] - 2026-01-30
 
 ### 🚀 Added

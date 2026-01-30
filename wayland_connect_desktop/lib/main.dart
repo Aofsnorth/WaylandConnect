@@ -405,10 +405,15 @@ X-GNOME-Autostart-enabled=true
     } else if (menuItem.key == 'hide_window') {
       windowManager.hide();
     } else if (menuItem.key == 'exit_app') {
-      _backendProcess?.kill();
-      _overlayProcess?.kill();
-      exit(0);
+      _shutdown();
     }
+  }
+
+  void _shutdown() {
+    debugPrint("🛑 Shutting down backend processes...");
+    _backendProcess?.kill();
+    _overlayProcess?.kill();
+    exit(0);
   }
 
   @override
@@ -417,6 +422,8 @@ X-GNOME-Autostart-enabled=true
     bool isPreventClose = await windowManager.isPreventClose();
     if (isPreventClose) {
       windowManager.hide();
+    } else {
+      _shutdown();
     }
   }
 
@@ -1458,7 +1465,7 @@ X-GNOME-Autostart-enabled=true
         Center(
           child: Column(
             children: [
-              Text("WAYLAND CONNECT v1.0.1", style: TextStyle(color: Colors.white.withOpacity(0.1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              Text("WAYLAND CONNECT v1.0.1.1", style: TextStyle(color: Colors.white.withOpacity(0.1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2)),
               const SizedBox(height: 8),
               Text("DEVELOPED BY ARTHENYX", style: TextStyle(color: Colors.white.withOpacity(0.05), fontSize: 8, letterSpacing: 1)),
             ],

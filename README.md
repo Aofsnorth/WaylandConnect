@@ -164,3 +164,7 @@ Project ini dilisensikan di bawah [MIT License](LICENSE).
 
 ---
 Made with ❤️ by [Aofsnorth](https://github.com/Aofsnorth)
+
+## ⭐️ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Aofsnorth/WaylandConnect&type=Date)](https://star-history.com/#Aofsnorth/WaylandConnect&Date)
