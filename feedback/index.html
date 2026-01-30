@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback - Wayland Connect</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-glow: rgba(79, 70, 229, 0.4);
+            --bg: #050505;
+            --card-bg: rgba(20, 20, 20, 0.6);
+            --text: #ffffff;
+            --text-dim: #a1a1aa;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-image: url('assets/bg.png');
+            background-size: cover;
+            background-position: center;
+            filter: brightness(0.4) saturate(1.2);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .logo-box {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+            border-radius: 20px;
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px var(--primary-glow);
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 900;
+            letter-spacing: -0.05em;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to bottom, #fff, #a1a1aa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 600px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            width: 100%;
+            animation: fadeInUp 1s ease-out 0.2s both;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 20px var(--primary-glow);
+        }
+
+        .icon-wrap {
+            width: 50px;
+            height: 50px;
+            background: var(--glass);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .card p {
+            color: var(--text-dim);
+            font-size: 1rem;
+            flex-grow: 1;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            color: var(--primary);
+            transition: gap 0.2s;
+        }
+
+        .card:hover .btn {
+            gap: 0.8rem;
+        }
+
+        footer {
+            margin-top: 5rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            animation: fadeIn 1.5s ease-in;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @media (max-width: 640px) {
+            h1 { font-size: 2.5rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    
+    <div class="container">
+        <header>
+            <div class="logo-box">
+                <i data-lucide="zap" size="40"></i>
+            </div>
+            <h1>Wayland Connect</h1>
+            <p class="subtitle">Your feedback helps us build the future of Linux remote control. How can we improve today?</p>
+        </header>
+
+        <div class="grid">
+            <a href="https://github.com/Aofsnorth/WaylandConnect/issues/new?template=bug_report.md" class="card">
+                <div class="icon-wrap"><i data-lucide="bug"></i></div>
+                <div>
+                    <h2>Report a Bug</h2>
+                    <p>Found something broken? Let us know so we can fix it as soon as possible.</p>
+                </div>
+                <div class="btn">Open Report <i data-lucide="arrow-right"></i></div>
+            </a>
+
+            <a href="https://github.com/Aofsnorth/WaylandConnect/issues/new?template=feature_request.md" class="card">
+                <div class="icon-wrap"><i data-lucide="lightbulb"></i></div>
+                <div>
+                    <h2>Request a Feature</h2>
+                    <p>Have an idea for a new feature? We'd love to hear your suggestions.</p>
+                </div>
+                <div class="btn">Share Idea <i data-lucide="arrow-right"></i></div>
+            </a>
+
+            <a href="https://github.com/Aofsnorth/WaylandConnect/issues/new?template=feedback.md" class="card">
+                <div class="icon-wrap"><i data-lucide="heart"></i></div>
+                <div>
+                    <h2>General Feedback</h2>
+                    <p>Just want to say hi or give us some praise? We appreciate all feedback.</p>
+                </div>
+                <div class="btn">Send Love <i data-lucide="arrow-right"></i></div>
+            </a>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 Wayland Connect. Built with ❤️ for the community.</p>
+        </footer>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

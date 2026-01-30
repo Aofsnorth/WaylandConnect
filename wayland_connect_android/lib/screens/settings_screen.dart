@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:wayland_connect_android/l10n/app_localizations.dart';
 import '../main.dart';
 import '../utils/protocol.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback onBack;
@@ -262,6 +263,20 @@ X-GNOME-Autostart-enabled=true
                         _checkPermissions();
                       },
                     ),
+                    const SizedBox(height: 32),
+                    _buildSectionHeader(AppLocalizations.of(context)!.about),
+                    _buildSettingCard(
+                      icon: Icons.feedback_rounded,
+                      title: AppLocalizations.of(context)!.sendFeedback,
+                      subtitle: AppLocalizations.of(context)!.helpUsImprove,
+                      trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white24, size: 18),
+                      onTap: () async {
+                        final url = Uri.parse('https://aofsnorth.github.io/WaylandConnect/feedback/');
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                    ),
                     const SizedBox(height: 60),
                     Center(
                       child: Column(
@@ -273,7 +288,7 @@ X-GNOME-Autostart-enabled=true
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
-                              "WAYLAND CONNECT v1.0.0",
+                              "WAYLAND CONNECT v1.0.1.1",
                               style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 3),
                             ),
                           ),
@@ -303,35 +318,38 @@ X-GNOME-Autostart-enabled=true
     );
   }
 
-  Widget _buildSettingCard({required IconData icon, required String title, required String subtitle, required Widget trailing}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white70, size: 20),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-              ],
+  Widget _buildSettingCard({required IconData icon, required String title, required String subtitle, required Widget trailing, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white70, size: 20),
             ),
-          ),
-          trailing,
-        ],
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                ],
+              ),
+            ),
+            trailing,
+          ],
+        ),
       ),
     );
   }

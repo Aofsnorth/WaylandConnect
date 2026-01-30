@@ -1437,6 +1437,33 @@ X-GNOME-Autostart-enabled=true
             ],
           ),
         ),
+        ),
+        const SizedBox(height: 32),
+        Text(AppLocalizations.of(context)!.supportFeedback, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final url = Uri.parse("https://aofsnorth.github.io/WaylandConnect/feedback/");
+            await Process.run('xdg-open', [url.toString()]);
+          },
+          icon: const Icon(Icons.feedback_outlined),
+          label: Text(AppLocalizations.of(context)!.sendFeedback),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            foregroundColor: Colors.blueAccent,
+            side: BorderSide(color: Colors.blueAccent.withOpacity(0.3)),
+          ),
+        ),
+        const SizedBox(height: 60),
+        Center(
+          child: Column(
+            children: [
+              Text("WAYLAND CONNECT v1.0.1.1", style: TextStyle(color: Colors.white.withOpacity(0.1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              const SizedBox(height: 8),
+              Text("DEVELOPED BY ARTHENYX", style: TextStyle(color: Colors.white.withOpacity(0.05), fontSize: 8, letterSpacing: 1)),
+            ],
+          ),
+        ),
         const SizedBox(height: 40),
       ],
     );
