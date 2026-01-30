@@ -5,58 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-01-28
-
-### 🚀 Added
-- **Linux**: Added "Start on Boot" functionality.
-- **Makefile**: Added `appimage` build target.
-
-### 🩹 Fixed
-- **Android**: Fixed build crash related to notification content.
-- **Android**: Added back navigation confirmation.
-- **CI/CD**: Fixed Android build workflow.
-
-## [1.0.4] - 2026-01-30
+## [1.0.1] - 2026-01-30
 
 ### 🚀 Added
 - **Multi-Pointer Support**: Enabled multiple independent pointers controlled by different devices simultaneously.
 - **Improved Protocol**: UDP protocol extended with `DEVICE_ID|` prefix for robust multi-device communication.
+- **Version Sync**: Synchronized all components (Backend, Overlay, Android, and Desktop) to version 1.0.1.
 
 ### 🩹 Fixed
 - **Mirroring Bug**: Isolated screen sharing state per device, preventing incorrect "stop" actions on multiple devices.
 - **Android UI**: Removed visual artifact (white box) in the "Share Screen" tab by refactoring the layout and removing nested `Scaffold`.
-
-## [1.0.3] - 2026-01-28
-
-### 🚀 Added
-- **Android**: Added "Phone Link"-style background notifications and automatic reconnection for Trusted devices.
-- **Android**: Added a dedicated Disconnected page with intuitive error handling and reconnection actions.
-- **Desktop**: Added dynamic monitor detection in settings using `screen_retriever`.
-
-### 🩹 Fixed
-- Fixed build errors in CI caused by invalid semantic versioning formats.
-- Fixed duplicated UI elements in desktop settings.
-- Improved Linux icon visibility and consistency.
-
-### 🔒 Security
-- **Full TLS Encryption**: All communication between Android and PC is now encrypted using TLS with automatic self-signed certificate generation.
-- **Secure Backend**: Rust backend upgraded to use `tokio-rustls`.
-
-## [1.0.2] - 2026-01-28
-
-## [1.0.1.01] - 2026-01-28
-
-### 🚀 Added
-- **Android**: Added support for using the **Physical Power Button** as a mouse left-click while the pointer is active. Perfect for one-handed presentation control.
-
-## [1.0.1] - 2026-01-28
-
-### ⚡ Optimized
-- **Build Size**: 
-  - Android APK size reduced by ~60% using ABI splitting, Proguard, and resource shrinking.
-  - Desktop binary size reduced significantly using aggressive Rust release optimizations and binary stripping.
-  - Compressed all app icons and assets (Reduced icon sizes from ~500KB to ~50KB).
-- **GitHub Release**: Optimized release workflow to include split APKs.
 
 ## [1.0.0] - 2026-01-28
 
@@ -76,13 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automated GitHub Actions for building Android APK and Linux AppImage/Tarball.
   - Auto-release generation on tag creation.
 
-### 🐛 Fixed
+### 🩹 Fixed
 - Fixed layout issues on Android devices with notches.
 - Resolved pointer jitter by implementing smooth damping in the overlay.
 - Fixed `uinput` permission issues with new `install.sh` script.
-- Resolved build failures on Linux CI by adding necessary system dependencies (`libgtk4-layer-shell`, `libayatana-appindicator`).
-
-### 🔧 Changed
-- Upgraded project to Professional Monorepo structure.
-- Introduced `Makefile` for unified build commands.
-- Added `CONTRIBUTING.md` for developer guidelines.
+- Resolved build failures on Linux CI by adding necessary system dependencies.
