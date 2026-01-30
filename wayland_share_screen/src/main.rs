@@ -68,7 +68,7 @@ async fn setup_pipewire(fd: OwnedFd, node_id: u32) -> Result<(), Box<dyn std::er
                     let size = chunk.size();
                     
                     if let Some(map) = data.data() {
-                        let _frame_slice = &map[offset as usize..(offset + size as u32) as usize];
+                        let _frame_slice = &map[offset as usize..(offset + size) as usize];
                         // Process frame
                     }
                 }

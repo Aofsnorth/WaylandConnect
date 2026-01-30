@@ -12,7 +12,7 @@ mod event_handler;
 mod tls_utils;
 
 use std::sync::Arc;
-use env_logger;
+
 use log::info;
 use crate::server::InputServer;
 

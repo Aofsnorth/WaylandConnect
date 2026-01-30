@@ -93,6 +93,7 @@ impl PointerManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(&self, device_id: &str, active: bool, mode: i32, pitch: f32, roll: f32, size: f32, color: String, zoom: f32, particle: i32, stretch: f32, has_image: bool) {
         let mut state = match self.state.lock() {
             Ok(s) => s,

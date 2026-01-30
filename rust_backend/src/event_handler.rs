@@ -180,6 +180,7 @@ impl EventHandler {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_pair_request(&self, device_name: String, id: String, version: String, auto_reconnect_req: Option<bool>, device_ip: &str, _connection_addr: &str, tx_h: &Sender<Vec<u8>>) {
         info!("Pair request from: {} ({}) [v{}]", device_name, id, version);
         let server_version = env!("CARGO_PKG_VERSION");

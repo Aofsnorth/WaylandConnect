@@ -181,7 +181,7 @@ fn run_pipewire_loop(
                         if let Some(map) = data.data() {
                             if size > 0 {
                                 // info!("📸 Received frame from PipeWire: size={}", size);
-                                let frame_slice = &map[offset as usize..(offset + (size as u32)) as usize];
+                                let frame_slice = &map[offset as usize..(offset + size) as usize];
                             
                             let in_w = stride as u32 / 4; 
                             let in_h = size / stride as u32;
@@ -198,24 +198,22 @@ fn run_pipewire_loop(
                             };
 
                                 let final_img_buffer = if zoom > 1.05 {
-                                    if (in_w % 60) == 0 { // Simple limiter
+                                    if in_w.is_multiple_of(60) { // Simple limiter
                                         info!("🔍 Magnifier Active: zoom={:.2} @ ({:.2}, {:.2})", zoom, px, py);
                                     }
                                     let magnifier = Magnifier::new(zoom, target_w, target_h);
                                     let processed = magnifier.process(
                                         frame_slice, 
-                                        Resolution { width: in_w as u32, height: in_h as u32 },
+                                        Resolution { width: in_w, height: in_h },
                                         (px * in_w as f32) as i32,
                                         (py * in_h as f32) as i32
                                     );
                                     ImageBuffer::<Rgba<u8>, _>::from_raw(target_w, target_h, processed.to_vec())
+                                } else if let Some(img_buffer) = ImageBuffer::<Rgba<u8>, _>::from_raw(in_w, in_h, frame_slice.to_vec()) {
+                                    // Nearest neighbor is much faster than gaussian/triangle
+                                    Some(image::imageops::resize(&img_buffer, target_w, target_h, FilterType::Nearest))
                                 } else {
-                                    if let Some(img_buffer) = ImageBuffer::<Rgba<u8>, _>::from_raw(in_w as u32, in_h as u32, frame_slice.to_vec()) {
-                                        // Nearest neighbor is much faster than gaussian/triangle
-                                        Some(image::imageops::resize(&img_buffer, target_w, target_h, FilterType::Nearest))
-                                    } else {
-                                        None
-                                    }
+                                    None
                                 };
 
                                 if let Some(img) = final_img_buffer {
@@ -224,7 +222,7 @@ fn run_pipewire_loop(
                                     
                                     // Use JPEG encoder with optimized quality (60) to reduce network load & encoding time
                                     let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 60);
-                                    if let Ok(_) = encoder.encode_image(&img) {
+                                    if encoder.encode_image(&img).is_ok() {
                                          let len = jpg_data.len();
                                          if let Ok(mut f) = frame_store.lock() {
                                              *f = Some(jpg_data);

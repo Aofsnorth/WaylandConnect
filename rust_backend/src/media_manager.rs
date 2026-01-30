@@ -100,8 +100,8 @@ impl MediaManager {
         };
 
         let artist = if let Some(zbus::zvariant::Value::Array(a)) = metadata.get("xesam:artist") {
-             if let Some(first) = a.get().first() {
-                 if let zbus::zvariant::Value::Str(s) = first { s.to_string() } else { "Unknown Artist".to_string() }
+             if let Some(zbus::zvariant::Value::Str(s)) = a.get().first() {
+                 s.to_string()
              } else { "Unknown Artist".to_string() }
         } else {
             "Unknown Artist".to_string()

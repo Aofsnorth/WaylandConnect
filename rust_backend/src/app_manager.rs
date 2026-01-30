@@ -15,10 +15,9 @@ impl AppManager {
 
         for path in paths {
             if let Ok(entries) = fs::read_dir(path) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        if path.extension().map_or(false, |ext| ext == "desktop") {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                        if path.extension().is_some_and(|ext| ext == "desktop") {
                             if let Some(mut app) = Self::parse_desktop_file(&path) {
                                 // Try to get icon base64
                                 if !app.icon.is_empty() {
@@ -34,7 +33,6 @@ impl AppManager {
                     }
                 }
             }
-        }
         
         // Sort alphabetically
         apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));

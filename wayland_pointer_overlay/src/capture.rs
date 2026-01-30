@@ -10,6 +10,7 @@ use log::{info, error};
 
 
 
+#[allow(clippy::type_complexity)]
 pub struct ScreenCapture {
     last_frame: Arc<Mutex<Option<(Vec<u8>, u32, u32)>>>, // Data, Width, Height
     exclusion_rect: Arc<Mutex<Option<(f64, f64, f64, f64)>>>, // nx, ny, nw, nh (Normalized)
@@ -109,6 +110,7 @@ impl ScreenCapture {
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn run_pipewire_loop(
     fd: OwnedFd,
     node_id: u32,
@@ -142,7 +144,7 @@ fn run_pipewire_loop(
 
                     if let Some(map) = data.data() {
                         if size > 0 {
-                            let frame_slice = &map[offset as usize..(offset + (size as u32)) as usize];
+                            let frame_slice = &map[offset as usize..(offset + size) as usize];
                             
                             let width = stride as u32 / 4; 
                             let height = size / stride as u32;
@@ -155,7 +157,7 @@ fn run_pipewire_loop(
                                 } else if let Some((ref mut clean_vec, _cw, _ch)) = *f_guard {
                                     // RECONSTRUCTION LOOP
                                     // Copy everything EXCEPT the exclusion rect
-                                    let excl = excl_store.lock().unwrap().clone();
+                                    let excl = *excl_store.lock().unwrap();
                                     
                                     if let Some((nx, ny, nw, nh)) = excl {
                                         let src_stride = (width * 4) as usize;
@@ -168,7 +170,7 @@ fn run_pipewire_loop(
 
                                         for y in 0..height {
                                             let is_y_in = y as i32 >= ey && (y as i32) < (ey + eh);
-                                            let row_start = (y as usize * src_stride) as usize;
+                                            let row_start = y as usize * src_stride;
                                             
                                             if !is_y_in {
                                                 // Whole row is safe

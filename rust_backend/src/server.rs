@@ -16,6 +16,7 @@ use tokio::sync::mpsc::Sender;
 use std::sync::Mutex as StdMutex;
 
 pub struct ConnectionRegistry {
+    #[allow(clippy::type_complexity)]
     pub channels: StdMutex<HashMap<String, (Sender<Vec<u8>>, bool)>>,
 }
 
@@ -268,7 +269,7 @@ impl InputServer {
                             if let Ok(bin) = rmp_serde::encode::to_vec_named(&pkt) {
                                 let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
                                 msg.extend_from_slice(&bin);
-                                if let Err(_) = tx_m.send(msg).await { break; }
+                                if tx_m.send(msg).await.is_err() { break; }
                             }
                         }
                         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
@@ -380,20 +381,15 @@ impl InputServer {
 
                 // Reader Loop
                 let mut len_buf = [0u8; 4];
-                loop {
-                    match reader.read_exact(&mut len_buf).await {
-                        Ok(_) => {
-                            let len = u32::from_be_bytes(len_buf) as usize;
-                            if len > 10 * 1024 * 1024 { break; }
-                            let mut payload = vec![0u8; len];
-                            if reader.read_exact(&mut payload).await.is_ok() {
-                                if let Ok(event) = rmp_serde::from_slice::<InputEvent>(&payload) {
-                                     if handler.handle_event(event, &device_ip, &device_addr, &tx).await { break; }
-                                }
-                            } else { break; }
+                while reader.read_exact(&mut len_buf).await.is_ok() {
+                    let len = u32::from_be_bytes(len_buf) as usize;
+                    if len > 10 * 1024 * 1024 { break; }
+                    let mut payload = vec![0u8; len];
+                    if reader.read_exact(&mut payload).await.is_ok() {
+                        if let Ok(event) = rmp_serde::from_slice::<InputEvent>(&payload) {
+                             if handler.handle_event(event, &device_ip, &device_addr, &tx).await { break; }
                         }
-                        Err(_) => break,
-                    }
+                    } else { break; }
                 }
 
                 let mut state = STATE.lock().unwrap();

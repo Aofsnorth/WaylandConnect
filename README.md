@@ -3,12 +3,11 @@
 [![Release](https://img.shields.io/github/v/release/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)](https://github.com/Aofsnorth/WaylandConnect/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Aofsnorth/WaylandConnect/release.yml?style=for-the-badge)](https://github.com/Aofsnorth/WaylandConnect/actions)
 [![License](https://img.shields.io/github/license/Aofsnorth/WaylandConnect?style=for-the-badge&color=green)](LICENSE)
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FAofsnorth%2FWaylandConnect&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=VIEWS&edge_flat=false)](https://hits.seeyoufarm.com)
+[![Views](https://komarev.com/ghpvc/?username=Aofsnorth-WaylandConnect&color=blue&style=for-the-badge&label=VIEWS)](https://github.com/Aofsnorth/WaylandConnect)
 ![Downloads](https://img.shields.io/github/downloads/Aofsnorth/WaylandConnect/total?style=for-the-badge&color=orange)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
-### 📊 Repository Activity
-![Activity Graph](https://github-readme-activity-graph.vercel.app/graph?username=Aofsnorth&repo=WaylandConnect&theme=react-dark&bg_color=050505&hide_border=true)
+![Stats Card](https://github-readme-stats.vercel.app/api?username=Aofsnorth&show_icons=true&theme=react-dark&rank_icon=github&count_private=true&bg_color=050505&hide_border=true&title_color=39C16C&icon_color=39C16C&text_color=E1E1E1)
 
 ### 💬 Feedback & Support
 We love hearing from our users! If you find a bug, have a feature request, or just want to share your thoughts, please visit our **[Feedback Portal](https://aofsnorth.github.io/WaylandConnect/feedback/)**.

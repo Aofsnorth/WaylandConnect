@@ -236,7 +236,7 @@ fn write_input_data(data: &[f32], buf: &Arc<Mutex<Vec<f32>>>, fft_planner: &Arc<
             .map(|c| (c.re.powi(2) + c.im.powi(2)).sqrt() / 4.0)
             .collect();
 
-        let mut current_bands = vec![0.0f32; 7];
+        let mut current_bands = [0.0f32; 7];
         let scalar = *sens.lock().unwrap();
 
         // 7-Band Distribution (Bins out of 512, ~22Hz per bin)

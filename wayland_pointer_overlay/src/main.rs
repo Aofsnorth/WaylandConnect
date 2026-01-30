@@ -95,6 +95,7 @@ fn draw_polygon(ctx: &Context, cx: f64, cy: f64, sides: i32, radius: f64) {
     ctx.close_path();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_manifestation(ctx: &Context, mode: i32, particle: i32, cx: f64, cy: f64, w: f64, h: f64, r: f64, scale: f64, custom_image: &Option<cairo::ImageSurface>) {
     if mode == 6 {
         if let Some(img) = custom_image {
@@ -190,8 +191,8 @@ fn draw_pointer(ctx: &Context, s: &SinglePointerAnimState, screen_w: f64, screen
                      let sy = src_y + dy;
                      if sy < 0 || sy >= fh as i32 { continue; } // Out of bounds vertical
                      
-                     let row_src_start = (sy as usize * src_stride) as usize;
-                     let row_dest_start = (dy as usize * dest_stride) as usize;
+                     let row_src_start = sy as usize * src_stride;
+                    let row_dest_start = dy as usize * dest_stride;
                      
                      for dx in 0..view_w {
                          let sx = src_x + dx;
@@ -471,7 +472,7 @@ fn main() {
             let active_count = s.pointers.values().filter(|p| p.active).count();
             unsafe {
                 TICK_COUNT += 1;
-                if TICK_COUNT % 120 == 0 {
+                if TICK_COUNT.is_multiple_of(120) {
                     println!("💓 HEARTBEAT: active_pointers={}", active_count);
                 }
             }
@@ -680,18 +681,18 @@ fn main() {
                             }
                         } else if payload == "CLEAR_IMAGE" {
                             clear_img = true;
-                        } else if payload.starts_with("MONITOR:") {
-                            if let Ok(idx) = payload[8..].trim().parse::<i32>() { 
+                        } else if let Some(val) = payload.strip_prefix("MONITOR:") {
+                            if let Ok(idx) = val.trim().parse::<i32>() { 
                                 pointer.monitor_index = idx; 
                                 println!("🖥️ OVERLAY {}: Set monitor to {}", device_id, idx);
                             }
-                        } else if payload.starts_with("SIZE:") {
-                            if let Ok(sz) = payload[5..].trim().parse::<f32>() {
+                        } else if let Some(val) = payload.strip_prefix("SIZE:") {
+                            if let Ok(sz) = val.trim().parse::<f32>() {
                                 println!("🎯 OVERLAY {}: received standalone SIZE: {}", device_id, sz);
                                 pointer.target_size = sz;
                             }
-                        } else if payload.starts_with("MODE:") {
-                            if let Ok(m) = payload[5..].trim().parse::<i32>() { 
+                        } else if let Some(val) = payload.strip_prefix("MODE:") {
+                            if let Ok(m) = val.trim().parse::<i32>() { 
                                 println!("🎯 OVERLAY {}: received standalone MODE: {}", device_id, m);
                                 pointer.mode = m; 
                             }
