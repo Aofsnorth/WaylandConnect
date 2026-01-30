@@ -7,7 +7,9 @@
 ![Downloads](https://img.shields.io/github/downloads/Aofsnorth/WaylandConnect/total?style=for-the-badge&color=orange)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
-![Stats Card](https://github-readme-stats.vercel.app/api?username=Aofsnorth&show_icons=true&theme=react-dark&rank_icon=github&count_private=true&bg_color=050505&hide_border=true&title_color=39C16C&icon_color=39C16C&text_color=E1E1E1)
+![Stars](https://img.shields.io/github/stars/Aofsnorth/WaylandConnect?style=for-the-badge&color=gold)
+![Forks](https://img.shields.io/github/forks/Aofsnorth/WaylandConnect?style=for-the-badge&color=blue)
+![Issues](https://img.shields.io/github/github/issues/Aofsnorth/WaylandConnect?style=for-the-badge&color=red)
 
 ### 💬 Feedback & Support
 We love hearing from our users! If you find a bug, have a feature request, or just want to share your thoughts, please visit our **[Feedback Portal](https://aofsnorth.github.io/WaylandConnect/feedback/)**.
