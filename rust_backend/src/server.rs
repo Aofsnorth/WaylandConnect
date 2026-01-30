@@ -145,29 +145,64 @@ impl InputServer {
         let fp_c = fingerprint.clone();
         tokio::spawn(async move {
             let socket = match std::net::UdpSocket::bind(wc_core::constants::DISCOVERY_ADDR) {
-                Ok(s) => s,
+                Ok(s) => {
+                    log::info!("✅ UDP Discovery socket bound successfully to {}", wc_core::constants::DISCOVERY_ADDR);
+                    s
+                },
                 Err(e) => {
-                    log::error!("❌ Failed to bind UDP Discovery socket: {}", e);
+                    log::error!("❌ Failed to bind UDP Discovery socket on {}: {}", wc_core::constants::DISCOVERY_ADDR, e);
+                    log::error!("   Check if port {} is already in use or blocked by firewall", wc_core::constants::DISCOVERY_PORT);
                     return;
                 }
             };
-            socket.set_broadcast(true).unwrap();
+            
+            if let Err(e) = socket.set_broadcast(true) {
+                log::error!("❌ Failed to enable broadcast on UDP socket: {}", e);
+                return;
+            }
+            
             let mut buf = [0u8; 1024];
             log::info!("📡 UDP Discovery Responder active on port {}", wc_core::constants::DISCOVERY_PORT);
+            log::info!("   Waiting for discovery broadcasts from Android devices...");
             
             loop {
-                if let Ok((amt, src)) = socket.recv_from(&mut buf) {
-                    let msg = String::from_utf8_lossy(&buf[..amt]);
-                    if msg.contains("discovery") {
-                        let response = crate::protocol::ControlResponse::DiscoveryResponse {
-                            server_name: get_server_host_name(),
-                            fingerprint: Some(fp_c.clone()),
-                        };
-                        if let Ok(bin) = rmp_serde::encode::to_vec_named(&response) {
-                             let mut packet = (bin.len() as u32).to_be_bytes().to_vec();
-                             packet.extend_from_slice(&bin);
-                             let _ = socket.send_to(&packet, src);
+                match socket.recv_from(&mut buf) {
+                    Ok((amt, src)) => {
+                        let msg = String::from_utf8_lossy(&buf[..amt]);
+                        log::info!("📥 Received UDP packet from {}: {:?} ({} bytes)", src, msg, amt);
+                        
+                        if msg.contains("discovery") {
+                            log::info!("🔍 Discovery request detected from {}", src);
+                            let server_name = get_server_host_name();
+                            let response = crate::protocol::ControlResponse::DiscoveryResponse {
+                                server_name: server_name.clone(),
+                                fingerprint: Some(fp_c.clone()),
+                            };
+                            
+                            match rmp_serde::encode::to_vec_named(&response) {
+                                Ok(bin) => {
+                                    let mut packet = (bin.len() as u32).to_be_bytes().to_vec();
+                                    packet.extend_from_slice(&bin);
+                                    
+                                    match socket.send_to(&packet, src) {
+                                        Ok(sent) => {
+                                            log::info!("📤 Sent discovery response to {} ({} bytes): server_name='{}'", src, sent, server_name);
+                                        }
+                                        Err(e) => {
+                                            log::error!("❌ Failed to send discovery response to {}: {}", src, e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("❌ Failed to encode discovery response: {}", e);
+                                }
+                            }
+                        } else {
+                            log::warn!("⚠️  Received non-discovery UDP packet from {}: {:?}", src, msg);
                         }
+                    }
+                    Err(e) => {
+                        log::error!("❌ Error receiving UDP packet: {}", e);
                     }
                 }
             }

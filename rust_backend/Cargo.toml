@@ -26,7 +26,7 @@ cpal = "0.15"
 rustfft = "6.1"
 image = { version = "0.24", features = ["jpeg"] }
 base64 = "0.21"
-ashpd = { version = "0.8", features = ["pipewire"] }
+ashpd = { version = "0.9", features = ["pipewire"] }
 pipewire = "0.8"
 libspa = "0.8"
 rmp-serde = "1.3.1"

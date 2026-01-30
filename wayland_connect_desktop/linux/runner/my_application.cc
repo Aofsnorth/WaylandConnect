@@ -54,12 +54,19 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
-  // Set the window icon from assets
-  g_autoptr(GError) error = nullptr;
-  if (!gtk_window_set_icon_from_file(window, "data/flutter_assets/assets/images/app_icon.png", &error)) {
-    g_warning("Failed to set window icon from bundled assets: %s", error->message);
-    // Fallback if running from source/different directory
-    gtk_window_set_icon_from_file(window, "assets/images/app_icon.png", nullptr);
+  // Set the window icon
+  const char* icon_paths[] = {
+    "data/flutter_assets/assets/images/app_icon.png",
+    "assets/images/app_icon.png",
+    "/usr/share/icons/hicolor/512x512/apps/wayland-connect.png"
+  };
+
+  for (const char* path : icon_paths) {
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) {
+      if (gtk_window_set_icon_from_file(window, path, nullptr)) {
+        break;
+      }
+    }
   }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

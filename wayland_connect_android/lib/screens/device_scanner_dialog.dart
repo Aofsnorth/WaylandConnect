@@ -143,44 +143,62 @@ class _DeviceScannerDialogState extends State<DeviceScannerDialog> {
 
   void _udpDiscovery(int port) async {
     try {
+      debugPrint('🚀 Starting UDP Discovery...');
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       socket.broadcastEnabled = true;
+      
+      final localPort = socket.port;
+      debugPrint('✅ UDP socket bound to local port: $localPort');
 
-      debugPrint('📡 Sending UDP Discovery broadcast...');
+      debugPrint('📡 Sending UDP Discovery broadcast to 255.255.255.255:12346...');
       final data = utf8.encode("discovery");
-      socket.send(data, InternetAddress("255.255.255.255"), 12346);
+      final sent = socket.send(data, InternetAddress("255.255.255.255"), 12346);
+      debugPrint('   Broadcast sent: $sent bytes');
 
+      int responseCount = 0;
       socket.listen((event) {
         if (event == RawSocketEvent.read) {
           final datagram = socket.receive();
           if (datagram != null) {
+            responseCount++;
             final ip = datagram.address.address;
-            debugPrint('🎯 Received UDP response from $ip');
+            final port = datagram.port;
+            debugPrint('🎯 [$responseCount] Received UDP response from $ip:$port (${datagram.data.length} bytes)');
 
-            // Process binary msgpack (skip 4 byte length header if present, though UDP usually doesn't need it if it's the whole packet)
-            // But our backend sends it. Let's handle both.
-            var payload = datagram.data;
-            if (payload.length > 4) {
-               final expectedLen = ByteData.sublistView(payload, 0, 4).getUint32(0, Endian.big);
-               if (payload.length >= expectedLen + 4) {
-                  payload = payload.sublist(4, 4 + expectedLen);
-               }
-            }
-            
-            final localProtocol = ProtocolHandler();
-            final results = localProtocol.process(payload);
-            for (final packet in results) {
-               if (packet is Map && packet['type'].toString().toLowerCase() == 'discovery_response') {
-                  final name = packet['data']?['server_name'] ?? ip;
-                  if (mounted) {
-                    setState(() {
-                      final dev = DiscoveredDevice(ip, name);
-                      if (!_foundDevices.contains(dev)) {
-                        _foundDevices.add(dev);
-                      }
-                    });
-                  }
-               }
+            try {
+              // Process binary msgpack (skip 4 byte length header if present)
+              var payload = datagram.data;
+              if (payload.length > 4) {
+                 final expectedLen = ByteData.sublistView(payload, 0, 4).getUint32(0, Endian.big);
+                 if (payload.length >= expectedLen + 4) {
+                    payload = payload.sublist(4, 4 + expectedLen);
+                    debugPrint('   Extracted msgpack payload: ${payload.length} bytes');
+                 }
+              }
+              
+              final localProtocol = ProtocolHandler();
+              final results = localProtocol.process(payload);
+              debugPrint('   Decoded ${results.length} packet(s)');
+              
+              for (final packet in results) {
+                 debugPrint('   Packet: $packet');
+                 if (packet is Map && packet['type'].toString().toLowerCase() == 'discovery_response') {
+                    final name = packet['data']?['server_name'] ?? ip;
+                    debugPrint('✨ Found PC: "$name" at $ip');
+                    
+                    if (mounted) {
+                      setState(() {
+                        final dev = DiscoveredDevice(ip, name);
+                        if (!_foundDevices.contains(dev)) {
+                          _foundDevices.add(dev);
+                          _statusText = "Found: $name";
+                        }
+                      });
+                    }
+                 }
+              }
+            } catch (e) {
+              debugPrint('⚠️  Failed to parse UDP response from $ip: $e');
             }
           }
         }
@@ -188,9 +206,15 @@ class _DeviceScannerDialogState extends State<DeviceScannerDialog> {
 
       // Close socket after 3 seconds
       await Future.delayed(const Duration(seconds: 3));
+      debugPrint('⏱️  UDP Discovery timeout (3s). Received $responseCount response(s). Closing socket.');
       socket.close();
     } catch (e) {
       debugPrint('❌ UDP Discovery error: $e');
+      if (mounted) {
+        setState(() {
+          _statusText = "UDP Discovery failed: ${e.toString().substring(0, 50)}";
+        });
+      }
     }
   }
 

@@ -1668,11 +1668,13 @@ class _DeviceRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: actions.map((action) {
-                  return action;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: action,
+                  );
                 }).toList(),
               ),
             ],

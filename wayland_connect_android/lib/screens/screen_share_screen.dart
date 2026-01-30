@@ -399,7 +399,6 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> with TickerProvid
             children: [
               // 1. AMBIENT BACKGROUND
               Positioned.fill(child: Container(color: Colors.black)),
-              _buildGridBackground(),
 
               // 2. MIRROR CONTENT
               Positioned.fill(
@@ -435,28 +434,6 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> with TickerProvid
     }
   }
 
-  Widget _buildGridBackground() {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: MonitorPainter(color: Colors.white.withOpacity(0.02)),
-          ),
-        ),
-        // Subtle ambient glows
-        Positioned(
-          top: -100, left: -100,
-          child: Container(
-            width: 300, height: 300,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [Colors.blueAccent.withOpacity(0.05), Colors.transparent]),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildActiveMirror() {
     return Builder(
@@ -987,8 +964,15 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> with TickerProvid
             children: [
               const Icon(Icons.mouse_outlined, color: Colors.white24, size: 10),
               const SizedBox(width: 10),
-              Text(AppLocalizations.of(context)!.screenShareInstructions.toUpperCase(), 
-                style: const TextStyle(color: Colors.white12, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+              Flexible(
+                child: Text(
+                  AppLocalizations.of(context)!.screenShareInstructions.toUpperCase(), 
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white12, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                ),
+              ),
             ],
           ),
         ),
