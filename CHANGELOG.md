@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Android**: Added back navigation confirmation.
 - **CI/CD**: Fixed Android build workflow.
 
+## [1.0.4] - 2026-01-30
+
+### 🚀 Added
+- **Multi-Pointer Support**: Enabled multiple independent pointers controlled by different devices simultaneously.
+- **Improved Protocol**: UDP protocol extended with `DEVICE_ID|` prefix for robust multi-device communication.
+
+### 🩹 Fixed
+- **Mirroring Bug**: Isolated screen sharing state per device, preventing incorrect "stop" actions on multiple devices.
+- **Android UI**: Removed visual artifact (white box) in the "Share Screen" tab by refactoring the layout and removing nested `Scaffold`.
+
 ## [1.0.3] - 2026-01-28
 
 ### 🚀 Added

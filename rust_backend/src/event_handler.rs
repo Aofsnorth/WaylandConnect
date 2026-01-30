@@ -33,11 +33,9 @@ impl EventHandler {
                 let (devices, zoom_enabled) = {
                     let state = STATE.lock().unwrap();
                     let mut devices: Vec<DeviceInfo> = state.devices.values().cloned().collect();
-                    let is_running = self.screen_streamer.is_running();
+                    let mirroring_id = state.mirroring_device.clone();
                     for d in devices.iter_mut() {
-                        // For now we assume only one device can mirror at a time as per screen_streamer impl
-                        // In the future, match IP/ID if needed.
-                        d.is_mirroring = is_running; 
+                        d.is_mirroring = Some(d.id.clone()) == mirroring_id; 
                     }
                     (devices, state.zoom_enabled)
                 };
@@ -65,6 +63,10 @@ impl EventHandler {
                 if let Some(ip) = ip {
                      self.registry.send_to(&ip, &ControlResponse::SecurityUpdate { status: "Declined".to_string() }).await;
                 }
+                {
+                    let mut state = STATE.lock().unwrap();
+                    state.mirroring_device = None;
+                }
                 self.screen_streamer.stop(); // Stop mirroring on rejection
                 false 
             },
@@ -87,7 +89,7 @@ impl EventHandler {
                 let mut state = STATE.lock().unwrap();
                 state.zoom_enabled = enabled;
                 state.save();
-                self.pointer_manager.set_zoom_enabled(enabled);
+                self.pointer_manager.set_zoom_enabled(device_ip, enabled);
                 false
             },
             InputEvent::SetAutoConnect { enabled } => {
@@ -121,6 +123,10 @@ impl EventHandler {
                 };
                 if let Some(ip) = ip {
                     self.registry.send_to(&ip, &ControlResponse::StopMirroring).await;
+                }
+                {
+                    let mut state = STATE.lock().unwrap();
+                    state.mirroring_device = None;
                 }
                 self.screen_streamer.stop();
                 false
@@ -333,6 +339,10 @@ impl EventHandler {
             // Proactively notify the device so it can show the blocked UI immediately
             self.registry.send_to(&ip, &ControlResponse::SecurityUpdate { status: "Blocked".to_string() }).await;
         }
+        {
+            let mut state = STATE.lock().unwrap();
+            state.mirroring_device = None;
+        }
         self.screen_streamer.stop();
     }
 
@@ -358,10 +368,10 @@ impl EventHandler {
             },
             InputEvent::PointerData { active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image } => {
                 debug!("🖱️ Received PointerData: active={}, mode={}, pitch={}, roll={}", active, mode, pitch, roll);
-                self.pointer_manager.update(active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image);
+                self.pointer_manager.update(device_ip, active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image);
             },
             InputEvent::TestOverlaySequence => {
-                self.pointer_manager.run_test_sequence();
+                self.pointer_manager.run_test_sequence(device_ip);
             },
             InputEvent::PresentationControl { action } => {
                 let key = match action.as_str() {
@@ -372,7 +382,7 @@ impl EventHandler {
                 let _ = self.adapter.send_event(InputEvent::KeyPress { key: key.to_string() }).await;
             },
             InputEvent::SetPointerMonitor { monitor } => {
-                self.pointer_manager.set_monitor(monitor);
+                self.pointer_manager.set_monitor(device_ip, monitor);
             },
             InputEvent::LaunchApp { command } => {
                 let apps = AppManager::get_installed_apps();
@@ -448,6 +458,10 @@ impl EventHandler {
                 });
             },
             InputEvent::StopMirroring => {
+                {
+                    let mut state = STATE.lock().unwrap();
+                    state.mirroring_device = None;
+                }
                 self.screen_streamer.stop();
             },
             InputEvent::PointerImage { data } => {
@@ -460,7 +474,7 @@ impl EventHandler {
                 let mut state = STATE.lock().unwrap();
                 state.zoom_enabled = enabled;
                 state.save();
-                self.pointer_manager.set_zoom_enabled(enabled);
+                self.pointer_manager.set_zoom_enabled(device_ip, enabled);
             },
             InputEvent::SetAudioSensitivity { value } => {
                 self.audio_analyzer.set_sensitivity(value);
@@ -554,7 +568,11 @@ impl EventHandler {
                     
                     // Start the actual stream with requested params
                     info!("🚀 Starting portal for {}x{} (Monitor {})", p.width, p.height, p.monitor);
-                    self.pointer_manager.set_monitor(p.monitor);
+                    {
+                        let mut state = STATE.lock().unwrap();
+                        state.mirroring_device = Some(device_id);
+                    }
+                    self.pointer_manager.set_monitor(&ip, p.monitor);
                     self.screen_streamer.start(p.width, p.height, p.fps, p.monitor);
                 }
             } else {

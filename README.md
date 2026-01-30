@@ -25,6 +25,7 @@ Wayland Connect is a professional remote control and presentation tool tailor-ma
 
 - **Integrated Dashboard**: Monitor connection status, server IP, and connected devices in a sleek, modern interface.
 - **UDP Discovery**: Fast and automatic device detection—no more manual IP entry required.
+- **Multi-Pointer Support**: Multiple devices can now control independent pointers on the screen simultaneously.
 - **Air Mouse (Presentation Pointer)**: Use your phone's gyroscope as a laser pointer on your PC screen. Features multiple modes: Laser Dot, Ring, Hollow Frame, and more.
 - **Screen Mirroring**: Share your Android screen to your PC with low latency for presentations or monitoring.
 - **Precision Control**: Seamless cursor navigation, click gestures (using volume/power buttons as shortcuts), and smooth scrolling.
@@ -96,6 +97,7 @@ Wayland Connect adalah aplikasi *remote control* dan alat presentasi modern yang
 
 - **Dashboard Terintegrasi**: Pantau status koneksi, IP Server, dan perangkat yang terhubung dalam satu tampilan premium.
 - **UDP Discovery**: Deteksi perangkat secara otomatis dan cepat—tidak perlu lagi memasukkan IP secara manual.
+- **Multi-Pointer Support**: Mendukung pengendalian kursor secara independen dari beberapa perangkat sekaligus.
 - **Presentation Pointer (Air Mouse)**: Gunakan giroskop HP Anda sebagai *laser pointer* di layar PC. Dilengkapi dengan berbagai mode (Laser Dot, Ring, Hollow Frame, dll).
 - **Screen Mirroring**: Bagikan layar Android ke PC dengan latensi rendah untuk presentasi atau monitoring.
 - **Mouse & Gesture Control**: Navigasi kursor, klik (termasuk tombol volume & power sebagai shortcut), dan scroll dengan mulus.

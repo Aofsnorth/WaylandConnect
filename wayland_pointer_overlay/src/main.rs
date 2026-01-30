@@ -14,7 +14,7 @@ use capture::ScreenCapture;
 const MAX_TRAIL_POINTS: usize = 45;
 
 #[derive(Clone)]
-struct AnimState {
+struct SinglePointerAnimState {
     x: f64,
     y: f64,
     mode: i32,
@@ -32,7 +32,7 @@ struct AnimState {
     zoom: f64,
 }
 
-struct PointerState {
+struct SinglePointerState {
     target_x: f32,
     target_y: f32,
     target_size: f32,
@@ -43,11 +43,15 @@ struct PointerState {
     active: bool,
     mode: i32,
     monitor_index: i32,
-    anim: AnimState,
+    anim: SinglePointerAnimState,
+    test_mode: bool,
+}
+
+struct MultiPointerState {
+    pointers: std::collections::HashMap<String, SinglePointerState>,
     last_update: Instant,
     custom_image: SendImageSurface,
     capture: Arc<ScreenCapture>,
-    test_mode: bool,
 }
 
 struct SendImageSurface(Option<cairo::ImageSurface>);
@@ -119,7 +123,7 @@ fn draw_manifestation(ctx: &Context, mode: i32, particle: i32, cx: f64, cy: f64,
     }
 }
 
-fn draw_pointer(ctx: &Context, s: &AnimState, screen_w: f64, screen_h: f64, custom_image: &Option<cairo::ImageSurface>, capture: &Arc<ScreenCapture>) {
+fn draw_pointer(ctx: &Context, s: &SinglePointerAnimState, screen_w: f64, screen_h: f64, custom_image: &Option<cairo::ImageSurface>, capture: &Arc<ScreenCapture>) {
     let px = s.x * screen_w;
     let py = s.y * screen_h;
     let opacity = s.opacity;
@@ -128,7 +132,8 @@ fn draw_pointer(ctx: &Context, s: &AnimState, screen_w: f64, screen_h: f64, cust
 
     if opacity < 0.001 { return; }
     
-    // Debug logging for zoom
+    // Debug logging for zoom (Disabled for production multi-pointer or moved to per-pointer logic if needed)
+    /*
     static mut LOG_COUNTER: i32 = 0;
     unsafe {
         LOG_COUNTER += 1;
@@ -136,6 +141,7 @@ fn draw_pointer(ctx: &Context, s: &AnimState, screen_w: f64, screen_h: f64, cust
            println!("Overlay Debug: Alpha: {}, Zoom: {}, HasFrame: {}", s.fill_alpha, s.zoom, capture.get_latest_frame().is_some());
         }
     }
+    */
 
     // ========== 0. MAGNIFIER CONTENT (New) ==========
     // Logic: If hollow mode (fill_alpha < 0.5) AND zoom > 1.05
@@ -403,38 +409,11 @@ fn main() {
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
 
-        let state = Arc::new(Mutex::new(PointerState {
-            target_x: 0.5,
-            target_y: 0.5,
-            active: false,
-            mode: 0, // Default to Dot (New ID 0)
-            target_size: 1.0,
-            target_color: "#ffffffff".to_string(),
-            target_zoom: 1.0,
-            target_particle: 0,
-            target_stretch: 1.0,
-            monitor_index: 0,
+        let state = Arc::new(Mutex::new(MultiPointerState {
+            pointers: std::collections::HashMap::new(),
             last_update: Instant::now(),
-            anim: AnimState {
-                x: 0.5,
-                y: 0.5,
-                mode: 0,
-                width: 40.0,
-                height: 40.0,
-                radius: 20.0,
-                stroke_width: 2.0,
-                fill_alpha: 1.0,
-                opacity: 0.0,
-                trail: Vec::new(),
-                glow_intensity: 1.0,
-                color: (1.0, 1.0, 1.0, 1.0),
-                particle: 0,
-                stretch: 1.0,
-                zoom: 1.0,
-            },
             custom_image: SendImageSurface(None),
             capture: Arc::new(ScreenCapture::new()),
-            test_mode: false,
         }));
         
         // REMOVED: capture.start() - Now started lazily via UDP command
@@ -472,7 +451,9 @@ fn main() {
         let state_draw = state.clone();
         drawing_area.set_draw_func(move |_, ctx, w, h| {
             let s = state_draw.lock().unwrap();
-            draw_pointer(ctx, &s.anim, w as f64, h as f64, &s.custom_image.0, &s.capture);
+            for pointer in s.pointers.values() {
+                draw_pointer(ctx, &pointer.anim, w as f64, h as f64, &s.custom_image.0, &s.capture);
+            }
         });
 
         let state_tick = state.clone();
@@ -487,153 +468,121 @@ fn main() {
             let mut s = state_tick.lock().unwrap();
             
             static mut TICK_COUNT: u64 = 0;
+            let active_count = s.pointers.values().filter(|p| p.active).count();
             unsafe {
                 TICK_COUNT += 1;
                 if TICK_COUNT % 120 == 0 {
-                    println!("💓 HEARTBEAT: active={}, opacity={:.2}", s.active, s.anim.opacity);
+                    println!("💓 HEARTBEAT: active_pointers={}", active_count);
                 }
             }
 
             let dt = now.duration_since(s.last_update).as_secs_f64().min(0.1);
             s.last_update = now;
             
-            // Movement Smoothing - CRANKED UP for high-refresh response
-            s.anim.x = damp(s.anim.x, s.target_x as f64, 120.0, dt);
-            s.anim.y = damp(s.anim.y, s.target_y as f64, 120.0, dt);
-            
-            // Opacity - PRODUCTION LOGIC
-            // Use s.active OR s.test_mode so the Test Overlay button still works
-            let target_op = if s.active || s.test_mode { 1.0 } else { 0.0 };
-            let op_smoothing = if s.active || s.test_mode { 30.0 } else { 45.0 };
-            
-            s.anim.opacity = damp(s.anim.opacity, target_op, op_smoothing, dt);
-            
-            // Pulse monitor for visibility
-            if s.anim.opacity > 0.01 && !win_tick.is_visible() { 
-                win_tick.set_visible(true); 
-            }
-            
-            // Monitor update logic
-            static mut LAST_MONITOR: i32 = -1;
-            unsafe {
-                if LAST_MONITOR != s.monitor_index {
-                    let display = Display::default().expect("No display");
-                    let monitors = display.monitors();
-                    if s.monitor_index >= 0 && (s.monitor_index as u32) < monitors.n_items() {
-                        if let Some(m) = monitors.item(s.monitor_index as u32).and_then(|i| i.downcast::<gtk4::gdk::Monitor>().ok()) {
-                            // info!("🖥️ Overlay switching to monitor {}", s.monitor_index);
-                            win_tick.set_monitor(&m);
-                        }
-                    }
-                    LAST_MONITOR = s.monitor_index;
+            let mut has_zoom = None;
+            for (_id, pointer) in s.pointers.iter_mut() {
+                // Movement Smoothing
+                pointer.anim.x = damp(pointer.anim.x, pointer.target_x as f64, 120.0, dt);
+                pointer.anim.y = damp(pointer.anim.y, pointer.target_y as f64, 120.0, dt);
+                
+                // Opacity
+                let target_op = if pointer.active || pointer.test_mode { 1.0 } else { 0.0 };
+                let op_smoothing = if pointer.active || pointer.test_mode { 30.0 } else { 45.0 };
+                pointer.anim.opacity = damp(pointer.anim.opacity, target_op, op_smoothing, dt);
+                
+                if pointer.anim.opacity > 0.01 && !win_tick.is_visible() { 
+                    win_tick.set_visible(true); 
                 }
-            }
-            
-            // Morphing - MATCHING ANDROID IDs
-            let (t_w, t_h, t_r, t_sw, t_fa) = match s.mode {
-                0 => (40.0, 40.0, 20.0, 2.0, 1.0),    // 0: Dot (Default)
-                1 => (90.0, 90.0, 45.0, 4.0, 0.0),    // 1: Ring (Highlight)
-                2 => (8.0, 450.0, 4.0, 2.0, 1.0),     // 2: Vertical Beam
-                3 => (450.0, 8.0, 4.0, 2.0, 1.0),     // 3: Horizontal Solid
-                4 => (400.0, 20.0, 10.0, 4.0, 0.0),   // 4: Hollow Horiz
-                5 => (20.0, 400.0, 10.0, 4.0, 0.0),   // 5: Hollow Vert
-                6 => (30.0, 30.0, 15.0, 2.0, 0.0),    // 6: Comet Tail
-                _ => (40.0, 40.0, 20.0, 2.0, 1.0),    
-            };
-            
-            // Apply scale and zoom from Android
-            let scale = s.target_size as f64;
-            let zoom = s.target_zoom as f64;
-            
-            let (mut t_w, mut t_h, t_r, t_sw) = match s.mode {
-                3 | 4 => ((t_w * scale).min(1200.0), t_h, t_r, t_sw), 
-                2 | 5 => (t_w, (t_h * scale).min(1200.0), t_r, t_sw), 
-                6 => (t_w * scale, t_h * scale, t_r * scale, t_sw * scale), // Removed zoom impact on size
-                _ => (t_w * scale, t_h * scale, t_r * scale, t_sw * scale),
-            };
+                
+                // Monitor update logic (simplified for multi-pointer: using the last one updated)
+                // In practice, usually all devices target the same monitor or have independent monitors.
+                // For now, let's keep it simple.
+                let display = Display::default().expect("No display");
+                let monitors = display.monitors();
+                if pointer.monitor_index >= 0 && (pointer.monitor_index as u32) < monitors.n_items() {
+                    if let Some(m) = monitors.item(pointer.monitor_index as u32).and_then(|i| i.downcast::<gtk4::gdk::Monitor>().ok()) {
+                        win_tick.set_monitor(&m);
+                    }
+                }
+                
+                // Morphing
+                let (t_w, t_h, t_r, t_sw, t_fa) = match pointer.mode {
+                    0 => (40.0, 40.0, 20.0, 2.0, 1.0),    
+                    1 => (90.0, 90.0, 45.0, 4.0, 0.0),    
+                    2 => (8.0, 450.0, 4.0, 2.0, 1.0),     
+                    3 => (450.0, 8.0, 4.0, 2.0, 1.0),     
+                    4 => (400.0, 20.0, 10.0, 4.0, 0.0),   
+                    5 => (20.0, 400.0, 10.0, 4.0, 0.0),   
+                    6 => (30.0, 30.0, 15.0, 2.0, 0.0),    
+                    _ => (40.0, 40.0, 20.0, 2.0, 1.0),    
+                };
+                
+                let scale = pointer.target_size as f64;
+                let zoom = pointer.target_zoom as f64;
+                
+                let (mut t_w, mut t_h, t_r, t_sw) = match pointer.mode {
+                    3 | 4 => ((t_w * scale).min(1200.0), t_h, t_r, t_sw), 
+                    2 | 5 => (t_w, (t_h * scale).min(1200.0), t_r, t_sw), 
+                    6 => (t_w * scale, t_h * scale, t_r * scale, t_sw * scale),
+                    _ => (t_w * scale, t_h * scale, t_r * scale, t_sw * scale),
+                };
 
-            // Removed explicit zoom scaling for hollow modes logic to keep pointer size constant
+                if pointer.mode == 4 { t_w *= pointer.anim.stretch; }
+                if pointer.mode == 5 { t_h *= pointer.anim.stretch; }
+                
+                let morph_speed = 35.0;
+                pointer.anim.width = damp(pointer.anim.width, t_w, morph_speed, dt);
+                pointer.anim.height = damp(pointer.anim.height, t_h, morph_speed, dt);
+                pointer.anim.radius = damp(pointer.anim.radius, t_r, morph_speed, dt);
+                pointer.anim.stroke_width = damp(pointer.anim.stroke_width, t_sw, 10.0, dt);
+                pointer.anim.fill_alpha = damp(pointer.anim.fill_alpha, t_fa, 10.0, dt);
+                
+                let target_z = if pointer.active && (pointer.mode == 1 || pointer.mode == 4 || pointer.mode == 5 || pointer.mode == 6) && zoom != 1.0 { 
+                    zoom 
+                } else { 
+                    1.0 
+                };
+                let zoom_smoothing = if target_z < 1.01 && pointer.anim.zoom > 1.01 { 120.0 } else { 75.0 };
+                pointer.anim.zoom = damp(pointer.anim.zoom, target_z, zoom_smoothing, dt);
+                
+                // Set Exclusion Rect (Simplified: uses the last zooming pointer)
+                if pointer.anim.zoom > 1.05 && pointer.anim.fill_alpha < 0.5 {
+                     let w_l = win_tick.width() as f64;
+                     let h_l = win_tick.height() as f64;
+                     let (m_w, m_h) = if pointer.mode == 6 { (w_l * 0.75, h_l * 0.75) } else { (pointer.anim.width, pointer.anim.height) };
+                     let b_w = m_w * 1.25;
+                     let b_h = m_h * 1.25;
+                     let nw = b_w / w_l.max(1.0);
+                     let nh = b_h / h_l.max(1.0);
+                     let nx = pointer.anim.x - nw / 2.0;
+                     let ny = pointer.anim.y - nh / 2.0;
+                     has_zoom = Some((nx, ny, nw, nh));
+                }
 
-            // Apply Stretch Factor for Hollow Modes
-            if s.mode == 4 { t_w *= s.anim.stretch; }
-            if s.mode == 5 { t_h *= s.anim.stretch; }
-            
-            // Morphing Speed (CRANKED UP)
-            static mut MORPH_SPEED: f64 = 35.0;
-            static mut MORPH_CHECKED: bool = false;
-            
-            unsafe {
-                 if !MORPH_CHECKED {
-                     // Check env var or config could go here
-                     MORPH_CHECKED = true;
-                 }
-            }
+                pointer.anim.color = {
+                    let (cr, cg, cb, ca) = parse_hex_color(&pointer.target_color);
+                    (
+                        damp(pointer.anim.color.0, cr, 60.0, dt),
+                        damp(pointer.anim.color.1, cg, 60.0, dt),
+                        damp(pointer.anim.color.2, cb, 60.0, dt),
+                        damp(pointer.anim.color.3, ca, 60.0, dt),
+                    )
+                };
+                pointer.anim.particle = pointer.target_particle;
+                pointer.anim.mode = pointer.mode;
+                
+                if pointer.mode == 6 && pointer.active { 
+                    let current_pos = (pointer.anim.x, pointer.anim.y);
+                    pointer.anim.trail.insert(0, current_pos);
+                    if pointer.anim.trail.len() > MAX_TRAIL_POINTS { pointer.anim.trail.pop(); }
+                } else if !pointer.anim.trail.is_empty() {
+                    pointer.anim.trail.pop();
+                }
 
-            s.anim.width = damp(s.anim.width, t_w, unsafe { MORPH_SPEED }, dt);
-            s.anim.height = damp(s.anim.height, t_h, unsafe { MORPH_SPEED }, dt);
-            s.anim.radius = damp(s.anim.radius, t_r, unsafe { MORPH_SPEED }, dt);
-            s.anim.stroke_width = damp(s.anim.stroke_width, t_sw, 10.0, dt);
-            s.anim.fill_alpha = damp(s.anim.fill_alpha, t_fa, 10.0, dt);
+                pointer.anim.glow_intensity = 0.8 + 0.2 * (now.elapsed().as_secs_f64() * 5.0).sin().abs();
+            } // This is the closing brace for the `for` loop.
             
-            // Zoom damp - Snappier snap-back (higher factor when target is 1.0)
-            // Force target_z to 1.0 if not active to ensure screen zoom closes immediately
-            let target_z = if s.active && (s.mode == 1 || s.mode == 4 || s.mode == 5 || s.mode == 6) && zoom != 1.0 { 
-                zoom 
-            } else { 
-                1.0 
-            };
-            let zoom_smoothing = if target_z < 1.01 && s.anim.zoom > 1.01 { 120.0 } else { 75.0 };
-            s.anim.zoom = damp(s.anim.zoom, target_z, zoom_smoothing, dt);
-            
-            // Set Exclusion Rect for Capture (Normalized 0.0 to 1.0)
-            if s.anim.zoom > 1.05 && s.anim.fill_alpha < 0.5 {
-                 let w_l = win_tick.width() as f64;
-                 let h_l = win_tick.height() as f64;
-                 
-                 // Lens dimensions (Logical)
-                 let (m_w, m_h) = if s.mode == 6 {
-                     (w_l * 0.75, h_l * 0.75)
-                 } else {
-                     (s.anim.width, s.anim.height)
-                 };
-                 
-                 // Box with padding (Logical)
-                 let b_w = m_w * 1.25;
-                 let b_h = m_h * 1.25;
-                 
-                 // Normalize
-                 let nw = b_w / w_l.max(1.0);
-                 let nh = b_h / h_l.max(1.0);
-                 let nx = s.anim.x - nw / 2.0;
-                 let ny = s.anim.y - nh / 2.0;
-                 
-                 s.capture.set_exclusion_rect(Some((nx, ny, nw, nh)));
-            } else {
-                 s.capture.set_exclusion_rect(None);
-            }
-            s.anim.color = {
-                let (cr, cg, cb, ca) = parse_hex_color(&s.target_color);
-                (
-                    damp(s.anim.color.0, cr, 60.0, dt),
-                    damp(s.anim.color.1, cg, 60.0, dt),
-                    damp(s.anim.color.2, cb, 60.0, dt),
-                    damp(s.anim.color.3, ca, 60.0, dt),
-                )
-            };
-            s.anim.particle = s.target_particle;
-            s.anim.mode = s.mode;
-            
-            // Trail is enabled for Comet Tail (6)
-            if s.mode == 6 && s.active { 
-                let current_pos = (s.anim.x, s.anim.y);
-                s.anim.trail.insert(0, current_pos);
-                if s.anim.trail.len() > MAX_TRAIL_POINTS { s.anim.trail.pop(); }
-            } else if !s.anim.trail.is_empty() {
-                s.anim.trail.pop();
-            }
-
-            s.anim.glow_intensity = 0.8 + 0.2 * (now.elapsed().as_secs_f64() * 5.0).sin().abs();
-            
+            s.capture.set_exclusion_rect(has_zoom);
             da_tick.queue_draw();
             glib::ControlFlow::Continue
         });
@@ -650,101 +599,143 @@ fn main() {
                 if let Ok((amt, _)) = socket.recv_from(&mut buf) {
                     let msg = String::from_utf8_lossy(&buf[..amt]);
                     let msg = msg.trim();
-                    println!("📬 OVERLAY RECEIVED: {}", msg);
+                    
+                    let (device_id, payload) = if let Some(idx) = msg.find('|') {
+                        (&msg[..idx], &msg[idx+1..])
+                    } else {
+                        ("default", msg)
+                    };
+
+                    println!("📬 OVERLAY RECEIVED for {}: {}", device_id, payload);
                     let mut s = state_udp.lock().unwrap();
-                    if msg == "STOP" {
-                        s.active = false;
-                    } else if msg == "START" {
-                        s.active = true;
-                    } else if msg == "TEST_SEQUENCE" {
-                        println!("🧪 OVERLAY: RUNNING TEST SEQUENCE (Cycling All Modes)");
-                        let state_test = state_udp.clone();
-                        thread::spawn(move || {
-                            {
-                                let mut s = state_test.lock().unwrap();
-                                s.test_mode = true;
-                                s.target_x = 0.5;
-                                s.target_y = 0.5;
-                                println!("🧪 TEST: FORCING TEST_MODE=TRUE");
-                            }
-                            for mode in 0..=6 {
+                    let mut clear_img = false;
+                    {
+                        let pointer = s.pointers.entry(device_id.to_string()).or_insert_with(|| SinglePointerState {
+                            target_x: 0.5,
+                            target_y: 0.5,
+                            active: false,
+                            mode: 0,
+                            target_size: 1.0,
+                            target_color: "#ffffffff".to_string(),
+                            target_zoom: 1.0,
+                            target_particle: 0,
+                            target_stretch: 1.0,
+                            monitor_index: 0,
+                            anim: SinglePointerAnimState {
+                                x: 0.5, y: 0.5, mode: 0, width: 40.0, height: 40.0, radius: 20.0,
+                                stroke_width: 2.0, fill_alpha: 1.0, opacity: 0.0, trail: Vec::new(),
+                                glow_intensity: 1.0, color: (1.0, 1.0, 1.0, 1.0), particle: 0, stretch: 1.0, zoom: 1.0,
+                            },
+                            test_mode: false,
+                        });
+
+                        if payload == "STOP" {
+                            pointer.active = false;
+                            println!("🛑 OVERLAY {}: STOP", device_id);
+                        } else if payload == "START" {
+                            pointer.active = true;
+                            println!("🟢 OVERLAY {}: START", device_id);
+                        } else if payload == "TEST_SEQUENCE" {
+                            println!("🧪 OVERLAY {}: RUNNING TEST SEQUENCE (Cycling All Modes)", device_id);
+                            let state_test = state_udp.clone();
+                            let d_id = device_id.to_string();
+                            thread::spawn(move || {
                                 {
                                     let mut s = state_test.lock().unwrap();
-                                    s.mode = mode;
-                                    println!("🧪 TEST: Switching to Mode {}", mode);
+                                    if let Some(p) = s.pointers.get_mut(&d_id) {
+                                        p.test_mode = true;
+                                        p.target_x = 0.5;
+                                        p.target_y = 0.5;
+                                        println!("🧪 TEST {}: FORCING TEST_MODE=TRUE", d_id);
+                                    }
                                 }
-                                thread::sleep(Duration::from_millis(2000));
+                                for mode in 0..=6 {
+                                    {
+                                        let mut s = state_test.lock().unwrap();
+                                        if let Some(p) = s.pointers.get_mut(&d_id) { 
+                                            p.mode = mode; 
+                                            println!("🧪 TEST {}: Switching to Mode {}", d_id, mode);
+                                        }
+                                    }
+                                    thread::sleep(Duration::from_millis(2000));
+                                }
+                                {
+                                    let mut s = state_test.lock().unwrap();
+                                    if let Some(p) = s.pointers.get_mut(&d_id) {
+                                        p.test_mode = false;
+                                        p.active = false;
+                                        println!("🧪 TEST {}: Sequence Complete (test_mode=false)", d_id);
+                                    }
+                                }
+                            });
+                        } else if payload == "START_CAPTURE" {
+                            s.capture.start();
+                            println!("📸 OVERLAY: Started screen capture");
+                        } else if payload == "RELOAD_IMAGE" {
+                            if let Ok(mut f) = std::fs::File::open(wc_core::constants::POINTER_IMAGE_PATH) {
+                                if let Ok(surf) = cairo::ImageSurface::create_from_png(&mut f) {
+                                    s.custom_image.0 = Some(surf);
+                                    println!("✅ OVERLAY reloaded custom image");
+                                }
                             }
-                            {
-                                let mut s = state_test.lock().unwrap();
-                                s.test_mode = false;
-                                s.active = false;
-                                println!("🧪 TEST: Sequence Complete (test_mode=false)");
+                        } else if payload == "CLEAR_IMAGE" {
+                            clear_img = true;
+                        } else if payload.starts_with("MONITOR:") {
+                            if let Ok(idx) = payload[8..].trim().parse::<i32>() { 
+                                pointer.monitor_index = idx; 
+                                println!("🖥️ OVERLAY {}: Set monitor to {}", device_id, idx);
                             }
-                        });
-                    } else if msg == "START_CAPTURE" {
-                        s.capture.start();
-                    } else if msg == "RELOAD_IMAGE" {
-                        // Reload from shared path
-                        if let Ok(mut f) = std::fs::File::open(wc_core::constants::POINTER_IMAGE_PATH) {
-                            if let Ok(surf) = cairo::ImageSurface::create_from_png(&mut f) {
-                                s.custom_image.0 = Some(surf);
-                                println!("✅ OVERLAY reloaded custom image");
+                        } else if payload.starts_with("SIZE:") {
+                            if let Ok(sz) = payload[5..].trim().parse::<f32>() {
+                                println!("🎯 OVERLAY {}: received standalone SIZE: {}", device_id, sz);
+                                pointer.target_size = sz;
+                            }
+                        } else if payload.starts_with("MODE:") {
+                            if let Ok(m) = payload[5..].trim().parse::<i32>() { 
+                                println!("🎯 OVERLAY {}: received standalone MODE: {}", device_id, m);
+                                pointer.mode = m; 
+                            }
+                        } else {
+                            let parts: Vec<&str> = payload.split(',').collect();
+                            if parts.len() >= 3 {
+                                if let (Ok(x), Ok(y)) = (parts[0].trim().parse::<f32>(), parts[1].trim().parse::<f32>()) {
+                                    pointer.target_x = x; 
+                                    pointer.target_y = y; 
+                                    pointer.active = true;
+                                    if let Ok(m) = parts[2].trim().parse::<i32>() {
+                                        if pointer.mode != m {
+                                            println!("🎯 OVERLAY {}: mode changed to: {}", device_id, m);
+                                            pointer.mode = m;
+                                        }
+                                    }
+                                    if parts.len() >= 4 { 
+                                        pointer.target_size = parts[3].trim().parse().unwrap_or(1.0); 
+                                    }
+                                    if parts.len() >= 5 {
+                                        pointer.target_color = parts[4].to_string();
+                                    }
+                                    if parts.len() >= 6 {
+                                        pointer.target_zoom = parts[5].parse().unwrap_or(1.0);
+                                    }
+                                    if parts.len() >= 7 {
+                                        pointer.target_particle = parts[6].parse().unwrap_or(0);
+                                    }
+                                    if parts.len() >= 8 {
+                                        let has_img = parts[7].trim().parse::<i32>().unwrap_or(0) == 1;
+                                        if !has_img {
+                                            clear_img = true;
+                                        }
+                                    }
+                                    if parts.len() >= 9 {
+                                        pointer.target_stretch = parts[8].trim().parse().unwrap_or(1.0);
+                                    }
+                                }
                             }
                         }
-                    } else if msg == "CLEAR_IMAGE" {
+                    }
+                    if clear_img {
                         s.custom_image.0 = None;
                         println!("🗑️ OVERLAY cleared custom image");
-                    } else if msg.starts_with("MONITOR:") {
-                        if let Ok(idx) = msg[8..].trim().parse::<i32>() { 
-                            s.monitor_index = idx; 
-                        }
-                    } else if msg.starts_with("SIZE:") {
-                        if let Ok(sz) = msg[5..].trim().parse::<f32>() {
-                            println!("🎯 OVERLAY received standalone SIZE: {}", sz);
-                            s.target_size = sz;
-                        }
-                    } else if msg.starts_with("MODE:") {
-                        if let Ok(m) = msg[5..].trim().parse::<i32>() { 
-                            println!("🎯 OVERLAY received standalone MODE: {}", m);
-                            s.mode = m; 
-                        }
-                    } else {
-                        let parts: Vec<&str> = msg.split(',').collect();
-                        if parts.len() >= 3 {
-                            if let (Ok(x), Ok(y)) = (parts[0].trim().parse::<f32>(), parts[1].trim().parse::<f32>()) {
-                                s.target_x = x; 
-                                s.target_y = y; 
-                                s.active = true;
-                                if let Ok(m) = parts[2].trim().parse::<i32>() {
-                                    if s.mode != m {
-                                        println!("🎯 OVERLAY mode changed to: {}", m);
-                                        s.mode = m;
-                                    }
-                                }
-                                if parts.len() >= 4 { 
-                                    s.target_size = parts[3].trim().parse().unwrap_or(1.0); 
-                                }
-                                if parts.len() >= 5 {
-                                    s.target_color = parts[4].to_string();
-                                }
-                                if parts.len() >= 6 {
-                                    s.target_zoom = parts[5].parse().unwrap_or(1.0);
-                                }
-                                if parts.len() >= 7 {
-                                    s.target_particle = parts[6].parse().unwrap_or(0);
-                                }
-                                if parts.len() >= 8 {
-                                    let has_img = parts[7].trim().parse::<i32>().unwrap_or(0) == 1;
-                                    if !has_img {
-                                        s.custom_image.0 = None;
-                                    }
-                                }
-                                if parts.len() >= 9 {
-                                    s.target_stretch = parts[8].trim().parse().unwrap_or(1.0);
-                                }
-                            }
-                        }
                     }
                 }
             }

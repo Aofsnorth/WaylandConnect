@@ -19,7 +19,7 @@ class ScreenShareScreen extends StatefulWidget {
 }
 
 class _ScreenShareScreenState extends State<ScreenShareScreen> with TickerProviderStateMixin {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+// Removed _scaffoldKey as it caused UI artifacts when nested
   Uint8List? _lastFrame;
   List<dynamic> _apps = [];
   List<dynamic> _filteredApps = [];
@@ -390,10 +390,9 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: const Color(0xFF050505),
-      body: LayoutBuilder(
+    return Material(
+      color: const Color(0xFF050505),
+      child: LayoutBuilder(
         builder: (context, constraints) {
           return Stack(
             children: [

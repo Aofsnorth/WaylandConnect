@@ -26,6 +26,8 @@ pub struct AppState {
     pub auto_connect: bool,
     #[serde(skip)]
     pub pending_mirror: Option<PendingMirror>,
+    #[serde(skip)]
+    pub mirroring_device: Option<String>,
 }
 
 fn default_true() -> bool { true }
@@ -38,12 +40,13 @@ impl AppState {
         if let Ok(mut file) = File::open(file_path) {
             let mut content = String::new();
             if file.read_to_string(&mut content).is_ok() {
-                if let Ok(state) = serde_json::from_str::<AppState>(&content) {
+                if let Ok(mut state) = serde_json::from_str::<AppState>(&content) {
+                    state.mirroring_device = None;
                     return state;
                 }
             }
         }
-        AppState { devices: HashMap::new(), media_playing: false, zoom_enabled: false, auto_connect: true, pending_mirror: None }
+        AppState { devices: HashMap::new(), media_playing: false, zoom_enabled: false, auto_connect: true, pending_mirror: None, mirroring_device: None }
     }
 
     pub fn save(&self) {

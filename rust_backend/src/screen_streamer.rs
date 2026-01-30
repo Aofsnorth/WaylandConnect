@@ -196,7 +196,7 @@ fn run_pipewire_loop(
                             };
 
                             let (zoom, px, py) = if let Some(pm) = &pointer_manager {
-                                pm.get_zoom_and_coords()
+                                pm.get_zoom_and_coords("")
                             } else {
                                 (1.0, 0.5, 0.5)
                             };
