@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 class DisconnectedScreen extends StatelessWidget {
   final VoidCallback onReconnect;
+  final VoidCallback? onReturnHome;
   final String? lastDeviceName;
 
   const DisconnectedScreen({
     super.key,
     required this.onReconnect,
+    this.onReturnHome,
     this.lastDeviceName,
   });
 
@@ -47,7 +49,6 @@ class DisconnectedScreen extends StatelessWidget {
             const SizedBox(height: 48),
             FilledButton.icon(
               onPressed: () {
-                Navigator.pop(context);
                 onReconnect();
               },
               style: FilledButton.styleFrom(
@@ -61,7 +62,13 @@ class DisconnectedScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (onReturnHome != null) {
+                  onReturnHome!();
+                } else {
+                  Navigator.pop(context);
+                }
+              },
               child: const Text("Return to Home", style: TextStyle(color: Colors.white54)),
             )
           ],

@@ -60,6 +60,36 @@ add_subdirectory("runner")
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
+# --- Rust Backend Integration ---
+set(RUST_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../rust_backend")
+set(RUST_OVERLAY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../wayland_pointer_overlay")
+
+# Determine flag and dir based on build type
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(CARGO_BUILD_FLAG "")
+  set(RUST_BUILD_TYPE "debug")
+else()
+  set(CARGO_BUILD_FLAG "--release")
+  set(RUST_BUILD_TYPE "release")
+endif()
+
+# Custom target to build Rust Backend
+add_custom_target(rust_build ALL
+  COMMAND cargo build ${CARGO_BUILD_FLAG}
+  WORKING_DIRECTORY ${RUST_BACKEND_DIR}
+  COMMENT "Building Rust Backend (${RUST_BUILD_TYPE})..."
+)
+
+add_custom_command(TARGET rust_build POST_BUILD
+  COMMAND cargo build ${CARGO_BUILD_FLAG}
+  WORKING_DIRECTORY ${RUST_OVERLAY_DIR}
+  COMMENT "Building Rust Overlay (${RUST_BUILD_TYPE})..."
+)
+
+# Make the main binary depend on Rust build
+add_dependencies(${BINARY_NAME} rust_build)
+# ------------------------------
+
 # Only the install-generated bundle's copy of the executable will launch
 # correctly, since the resources must in the right relative locations. To avoid
 # people trying to run the unbundled copy, put it in a subdirectory instead of
@@ -91,8 +121,15 @@ install(CODE "
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
+
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+
+# Install Rust Binaries to the bundle
+set(WORKSPACE_TARGET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../target/${RUST_BUILD_TYPE}")
+install(PROGRAMS "${WORKSPACE_TARGET_DIR}/wayland_connect_backend" DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime)
+install(PROGRAMS "${WORKSPACE_TARGET_DIR}/wayland_pointer_overlay" DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime)
+
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
@@ -106,11 +143,12 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     COMPONENT Runtime)
 endforeach(bundled_library)
 
-# Copy the native assets provided by the build.dart from all packages.
-set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
-install(DIRECTORY "${NATIVE_ASSETS_DIR}"
-   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-   COMPONENT Runtime)
+# Copy the native assets provided by build.dart if they exist
+if(EXISTS "${PROJECT_BUILD_DIR}native_assets/linux/")
+  install(DIRECTORY "${PROJECT_BUILD_DIR}native_assets/linux/"
+     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+     COMPONENT Runtime)
+endif()
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

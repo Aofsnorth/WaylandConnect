@@ -1,14 +1,16 @@
 use zbus::{Connection, Proxy};
 use std::collections::HashMap;
 use crate::protocol::MediaMetadata;
-use log::{error, info, debug};
+use log::{info, debug};
 
 pub struct MediaManager {
+    conn: Connection,
 }
 
 impl MediaManager {
-    pub fn new() -> Self {
-        Self {}
+    pub async fn new() -> anyhow::Result<Self> {
+        let conn = Connection::session().await?;
+        Ok(Self { conn })
     }
 
     async fn get_player_names(conn: &Connection) -> anyhow::Result<Vec<String>> {
@@ -25,8 +27,8 @@ impl MediaManager {
             .collect())
     }
 
-    async fn find_best_player(&self, conn: &Connection) -> Option<String> {
-        let player_names = Self::get_player_names(conn).await.ok()?;
+    async fn find_best_player(&self) -> Option<String> {
+        let player_names = Self::get_player_names(&self.conn).await.ok()?;
         if player_names.is_empty() { 
             debug!("No MPRIS players found on D-Bus");
             return None; 
@@ -37,7 +39,7 @@ impl MediaManager {
         let mut other = Vec::new();
 
         for name in player_names {
-            if let Ok(proxy) = Proxy::new(conn, name.as_str(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player").await {
+            if let Ok(proxy) = Proxy::new(&self.conn, name.as_str(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player").await {
                 // Get status with a default if it fails
                 let status: String = proxy.get_property("PlaybackStatus").await.unwrap_or_else(|_| "Unknown".to_string());
                 
@@ -70,17 +72,10 @@ impl MediaManager {
     }
 
     pub async fn get_current_player_metadata(&self) -> Option<MediaMetadata> {
-        let conn = match Connection::session().await {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Failed to connect to D-Bus session bus: {}", e);
-                return None;
-            }
-        };
         
-        let best_player = self.find_best_player(&conn).await?;
-        debug!("Selected media player: {}", best_player);
-        self.get_player_info(&conn, &best_player).await.ok()
+        let best_player = self.find_best_player().await?;
+        // debug!("Selected media player: {}", best_player);
+        self.get_player_info(&self.conn, &best_player).await.ok()
     }
 
     async fn get_player_info(&self, conn: &Connection, dest: &str) -> anyhow::Result<MediaMetadata> {
@@ -98,55 +93,44 @@ impl MediaManager {
         let shuffle: bool = proxy.get_property("Shuffle").await.unwrap_or(false);
         let loop_status: String = proxy.get_property("LoopStatus").await.unwrap_or_else(|_| "None".to_string());
 
-        // Extract track_id
+        let title = if let Some(zbus::zvariant::Value::Str(t)) = metadata.get("xesam:title") {
+            t.to_string()
+        } else {
+            "Unknown Title".to_string()
+        };
+
+        let artist = if let Some(zbus::zvariant::Value::Array(a)) = metadata.get("xesam:artist") {
+             if let Some(first) = a.get().first() {
+                 if let zbus::zvariant::Value::Str(s) = first { s.to_string() } else { "Unknown Artist".to_string() }
+             } else { "Unknown Artist".to_string() }
+        } else {
+            "Unknown Artist".to_string()
+        };
+
+        let album = if let Some(zbus::zvariant::Value::Str(a)) = metadata.get("xesam:album") {
+            a.to_string()
+        } else {
+            "Unknown Album".to_string()
+        };
+
+        let art_url = if let Some(zbus::zvariant::Value::Str(u)) = metadata.get("mpris:artUrl") {
+            u.to_string()
+        } else {
+            "".to_string()
+        };
+
         let track_id = if let Some(zbus::zvariant::Value::Str(id)) = metadata.get("mpris:trackid") {
             id.to_string()
         } else if let Some(zbus::zvariant::Value::ObjectPath(path)) = metadata.get("mpris:trackid") {
             path.to_string()
         } else {
-            "/org/mpris/MediaPlayer2/TrackList/NoTrack".to_string()
-        };
-
-        // Extract Title with multiple fallbacks
-        let title = metadata.get("xesam:title")
-            .and_then(|v| {
-                if let zbus::zvariant::Value::Str(s) = v { Some(s.to_string()) } else { None }
-            })
-            .or_else(|| {
-                // Fallback for some browsers or players that use different keys or just file name
-                metadata.get("mpris:trackid").map(|v| v.to_string().split('/').last().unwrap_or("Unknown").to_string())
-            })
-            .unwrap_or_else(|| "Active Session".to_string());
-
-        // Extract Artist
-        let artist = if let Some(zbus::zvariant::Value::Array(arr)) = metadata.get("xesam:artist") {
-             let artists: Vec<String> = arr.get().iter().filter_map(|v| {
-                 if let zbus::zvariant::Value::Str(s) = v { Some(s.to_string()) } else { None }
-             }).collect();
-             if artists.is_empty() { "Various Artists".to_string() } else { artists.join(", ") }
-        } else if let Some(zbus::zvariant::Value::Str(s)) = metadata.get("xesam:artist") {
-            s.to_string()
-        } else {
-            "Unknown Source".to_string()
-        };
-
-        let album = if let Some(zbus::zvariant::Value::Str(s)) = metadata.get("xesam:album") {
-            s.to_string()
-        } else {
             "".to_string()
         };
 
-        let art_url = if let Some(zbus::zvariant::Value::Str(s)) = metadata.get("mpris:artUrl") {
-            s.to_string()
-        } else if let Some(zbus::zvariant::Value::Str(s)) = metadata.get("xesam:url") {
-            // Some players use the file url as art source or just metadata
-            s.to_string()
-        } else {
-            "".to_string()
-        };
-
-        let mut duration = if let Some(val) = metadata.get("mpris:length") {
-            match val {
+        // Duration in microseconds
+        // Note: xesam:length is a 64-bit integer, but dynamic handling can be tricky
+        let mut duration: i64 = if let Some(v) = metadata.get("mpris:length") {
+            match v {
                 zbus::zvariant::Value::I64(d) => *d,
                 zbus::zvariant::Value::U64(d) => *d as i64,
                 _ => 0,
@@ -186,8 +170,7 @@ impl MediaManager {
     }
 
     pub async fn send_command(&self, command: &str) -> anyhow::Result<()> {
-        let conn = Connection::session().await?;
-        let target_player = match self.find_best_player(&conn).await {
+        let target_player = match self.find_best_player().await {
             Some(p) => p,
             None => {
                 info!("No active media player to send command '{}' to", command);
@@ -196,7 +179,7 @@ impl MediaManager {
         };
 
         let proxy = Proxy::new(
-            &conn,
+            &self.conn,
             target_player.as_str(),
             "/org/mpris/MediaPlayer2",
             "org.mpris.MediaPlayer2.Player",

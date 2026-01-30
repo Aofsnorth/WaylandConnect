@@ -17,17 +17,27 @@ help: ## Show this help message
 	@echo 'Targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-all: build ## Build all components (Desktop)
+all: build-debug ## Build all components in debug mode
 
-build: build-backend build-overlay build-desktop ## Build all desktop components
+build: build-backend build-overlay build-desktop ## Build all desktop components (Release)
 
-build-backend: ## Build the Rust backend
-	@echo "🦀 Building Rust Backend..."
+build-debug: build-backend-debug build-overlay-debug ## Build all desktop components (Debug)
+
+build-backend: ## Build the Rust backend (Release)
+	@echo "🦀 Building Rust Backend (Release)..."
 	cd rust_backend && $(CARGO) build --release
 
-build-overlay: ## Build the Wayland Overlay
-	@echo "🎨 Building Wayland Overlay..."
+build-backend-debug: ## Build the Rust backend (Debug)
+	@echo "🦀 Building Rust Backend (Debug)..."
+	cd rust_backend && $(CARGO) build
+
+build-overlay: ## Build the Wayland Overlay (Release)
+	@echo "🎨 Building Wayland Overlay (Release)..."
 	cd wayland_pointer_overlay && $(CARGO) build --release
+
+build-overlay-debug: ## Build the Wayland Overlay (Debug)
+	@echo "🎨 Building Wayland Overlay (Debug)..."
+	cd wayland_pointer_overlay && $(CARGO) build
 
 build-desktop: ## Build the Flutter Linux App
 	@echo "💙 Building Flutter Desktop..."

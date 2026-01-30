@@ -1,427 +1,380 @@
 use tokio::net::TcpListener;
-use tokio::io::{AsyncBufReadExt, BufReader, AsyncWriteExt};
-use crate::protocol::{InputEvent, DeviceInfo, StatusResponse, MediaResponse};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_rustls::TlsAcceptor;
+use crate::protocol::InputEvent;
 use crate::adapter::InputAdapter;
 use crate::media_manager::MediaManager;
 use crate::pointer_manager::PointerManager;
+use crate::audio_analyzer::AudioAnalyzer;
+use crate::screen_streamer::ScreenStreamer;
+use crate::session_state::STATE;
+use crate::event_handler::EventHandler;
 use std::sync::Arc;
-use log::{info, error};
-use notify_rust::Notification;
+use log::{info, error, debug};
 use std::collections::HashMap;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
+use tokio::sync::mpsc::Sender;
+use std::sync::Mutex as StdMutex;
 
-use std::fs::File;
-use std::io::{Read, Write, BufReader as StdBufReader};
-use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::{ServerConfig, Certificate, PrivateKey};
-use std::path::{Path, PathBuf};
-
-fn get_config_dir() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("wayland-connect");
-    if !path.exists() {
-        let _ = std::fs::create_dir_all(&path);
-    }
-    path
+pub struct ConnectionRegistry {
+    pub channels: StdMutex<HashMap<String, (Sender<Vec<u8>>, bool)>>,
 }
 
-fn get_tls_config() -> anyhow::Result<ServerConfig> {
-    let config_dir = get_config_dir();
-    let cert_path = config_dir.join("cert.pem");
-    let key_path = config_dir.join("key.pem");
-
-    if !cert_path.exists() || !key_path.exists() {
-        info!("🔐 Generating new self-signed TLS certificate...");
-        let cert = rcgen::generate_simple_self_signed(vec!["waylandconnect.local".to_string()])?;
-        
-        let mut cert_file = File::create(&cert_path)?;
-        cert_file.write_all(cert.serialize_pem()?.as_bytes())?;
-        
-        let mut key_file = File::create(&key_path)?;
-        key_file.write_all(cert.serialize_private_key_pem().as_bytes())?;
-        info!("✅ TLS certificate generated at {:?}", cert_path);
+impl ConnectionRegistry {
+    pub fn new() -> Self {
+        Self { channels: StdMutex::new(HashMap::new()) }
     }
 
-    let cert_file = File::open(&cert_path)?;
-    let mut reader = StdBufReader::new(cert_file);
-    let certs = rustls_pemfile::certs(&mut reader)?
-        .into_iter()
-        .map(Certificate)
-        .collect();
-
-    let key_file = File::open(&key_path)?;
-    let mut reader = StdBufReader::new(key_file);
-    let mut keys = rustls_pemfile::pkcs8_private_keys(&mut reader)?;
-    if keys.is_empty() {
-        let key_file = File::open(&key_path)?;
-        let mut reader = StdBufReader::new(key_file);
-        keys = rustls_pemfile::rsa_private_keys(&mut reader)?;
-    }
-    
-    let key = PrivateKey(keys.into_iter().next().ok_or_else(|| anyhow::anyhow!("No private key found"))?);
-
-    let config = ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)?;
-
-    Ok(config)
-}
-
-// State management for devices
-#[derive(serde::Serialize, serde::Deserialize)]
-struct AppState {
-    // Map ID -> DeviceInfo
-    devices: HashMap<String, DeviceInfo>,
-}
-
-impl AppState {
-    fn load() -> Self {
-        let config_dir = get_config_dir();
-        let file_path = config_dir.join("devices.json");
-        
-        if let Ok(mut file) = File::open(file_path) {
-            let mut content = String::new();
-            if file.read_to_string(&mut content).is_ok() {
-                if let Ok(state) = serde_json::from_str::<AppState>(&content) {
-                    return state;
-                }
-            }
-        }
-        AppState { devices: HashMap::new() }
+    pub fn add(&self, addr: String, tx: Sender<Vec<u8>>) {
+        let mut channels = self.channels.lock().unwrap();
+        channels.insert(addr, (tx, false)); // Default to not a dashboard
     }
 
-    fn save(&self) {
-        let config_dir = get_config_dir();
-        let file_path = config_dir.join("devices.json");
-        
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            if let Ok(mut file) = File::create(file_path) {
-                let _ = file.write_all(json.as_bytes());
-            }
+    pub fn mark_as_dashboard(&self, addr: &str) {
+        let mut channels = self.channels.lock().unwrap();
+        if let Some(entry) = channels.get_mut(addr) {
+            entry.1 = true;
+            info!("🖥️  Connection {} marked as DASHBOARD", addr);
         }
     }
-}
 
-lazy_static! {
-    static ref STATE: Mutex<AppState> = Mutex::new(AppState::load());
+    pub fn remove(&self, addr: &str) {
+        let mut channels = self.channels.lock().unwrap();
+        channels.remove(addr);
+    }
+
+    pub async fn broadcast_to_dashboard(&self, packet: &crate::protocol::ControlResponse) {
+        let bin = match rmp_serde::encode::to_vec_named(packet) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+        msg.extend_from_slice(&bin);
+
+        let targets: Vec<Sender<Vec<u8>>> = {
+            let channels = self.channels.lock().unwrap();
+            let found = channels.iter()
+                .filter(|(_, (_, is_dashboard))| *is_dashboard)
+                .map(|(_, (tx, _))| tx.clone())
+                .collect::<Vec<_>>();
+            
+            info!("📡 Dashboard broadcast: Found {} registered dashboard(s) out of {} total connections. Active Addrs: {:?}", 
+                found.len(), channels.len(), channels.keys().collect::<Vec<_>>());
+            found
+        };
+
+        for tx in targets {
+            info!("   -> Sending MirrorRequest to registered dashboard");
+            let _ = tx.send(msg.clone()).await;
+        }
+    }
+
+    pub async fn send_to(&self, key: &str, packet: &crate::protocol::ControlResponse) {
+        let bin = match rmp_serde::encode::to_vec_named(packet) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+        msg.extend_from_slice(&bin);
+
+        let targets = {
+            let channels = self.channels.lock().unwrap();
+            // Try direct match first (for connection_addr)
+            if let Some((tx, _)) = channels.get(key) {
+                vec![tx.clone()]
+            } else {
+                // Try matching by IP (key might be just IP)
+                channels.iter()
+                    .filter(|(addr, _)| addr.starts_with(key))
+                    .map(|(_, (tx, _))| tx.clone())
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        for tx in targets {
+            let _ = tx.send(msg.clone()).await;
+        }
+    }
 }
 
 pub struct InputServer {
     adapter: Arc<dyn InputAdapter + Send + Sync>,
     media_manager: Arc<MediaManager>,
     pointer_manager: Arc<PointerManager>,
+    audio_analyzer: Arc<AudioAnalyzer>,
+    screen_streamer: Arc<ScreenStreamer>,
+    registry: Arc<ConnectionRegistry>,
 }
 
 impl InputServer {
-    pub fn new(adapter: Arc<dyn InputAdapter + Send + Sync>) -> Self {
-        Self { 
+    pub async fn new(adapter: Arc<dyn InputAdapter + Send + Sync>) -> anyhow::Result<Self> {
+        let audio_analyzer = Arc::new(AudioAnalyzer::new());
+        audio_analyzer.start();
+        
+        let pointer_manager = Arc::new(PointerManager::new());
+        let mut screen_streamer = ScreenStreamer::new();
+        screen_streamer.set_pointer_manager(pointer_manager.clone());
+        
+        Ok(Self { 
             adapter,
-            media_manager: Arc::new(MediaManager::new()),
-            pointer_manager: Arc::new(PointerManager::new()),
-        }
+            media_manager: Arc::new(MediaManager::new().await?),
+            pointer_manager,
+            audio_analyzer,
+            screen_streamer: Arc::new(screen_streamer),
+            registry: Arc::new(ConnectionRegistry::new()),
+        })
     }
 
     pub async fn run(&self, port: u16) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-        let tls_config = get_tls_config()?;
-        let acceptor = TlsAcceptor::from(Arc::new(tls_config));
+        let (tls_config, fingerprint) = crate::tls_utils::load_tls_config()?;
+        let acceptor = TlsAcceptor::from(tls_config);
         
-        info!("🔐 Wayland Connect Secure Server listening on 0.0.0.0:{}", port);
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+        info!("🔐 TLS Wayland Connect Server (Binary Mode) listening on 0.0.0.0:{}", port);
+
+        let handler = Arc::new(EventHandler {
+            adapter: self.adapter.clone(),
+            media_manager: self.media_manager.clone(),
+            pointer_manager: self.pointer_manager.clone(),
+            screen_streamer: self.screen_streamer.clone(),
+            registry: self.registry.clone(),
+            audio_analyzer: self.audio_analyzer.clone(),
+            fingerprint: fingerprint.clone(),
+        });
+
+        // UDP Discovery Responder
+        let fp_c = fingerprint.clone();
+        tokio::spawn(async move {
+            let socket = match std::net::UdpSocket::bind(wc_core::constants::DISCOVERY_ADDR) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("❌ Failed to bind UDP Discovery socket: {}", e);
+                    return;
+                }
+            };
+            socket.set_broadcast(true).unwrap();
+            let mut buf = [0u8; 1024];
+            log::info!("📡 UDP Discovery Responder active on port {}", wc_core::constants::DISCOVERY_PORT);
+            
+            loop {
+                if let Ok((amt, src)) = socket.recv_from(&mut buf) {
+                    let msg = String::from_utf8_lossy(&buf[..amt]);
+                    if msg.contains("discovery") {
+                        let response = crate::protocol::ControlResponse::DiscoveryResponse {
+                            server_name: get_server_host_name(),
+                            fingerprint: Some(fp_c.clone()),
+                        };
+                        if let Ok(bin) = rmp_serde::encode::to_vec_named(&response) {
+                             let mut packet = (bin.len() as u32).to_be_bytes().to_vec();
+                             packet.extend_from_slice(&bin);
+                             let _ = socket.send_to(&packet, src);
+                        }
+                    }
+                }
+            }
+        });
 
         loop {
             let (socket, addr) = listener.accept().await?;
-            let adapter = self.adapter.clone();
-            let media_manager = self.media_manager.clone();
-            let pointer_manager = self.pointer_manager.clone();
+            let handler = handler.clone();
             let acceptor = acceptor.clone();
+            let audio_analyzer = self.audio_analyzer.clone();
+            let screen_streamer = self.screen_streamer.clone();
+            let media_manager = self.media_manager.clone();
+            let registry = self.registry.clone();
             
             tokio::spawn(async move {
                 let socket = match acceptor.accept(socket).await {
                     Ok(s) => s,
                     Err(e) => {
-                        error!("TLS accept error from {}: {}", addr, e);
+                        error!("❌ TLS Handshake failed: {}", e);
                         return;
                     }
                 };
+
+                let _ = socket.get_ref().0.set_nodelay(true); // Disable Nagle before splitting - critical for real-time audio!
+                let (mut reader, mut writer) = tokio::io::split(socket);
+                let device_addr = addr.to_string(); // Use IP:Port for absolute uniqueness
                 
-                let (reader, mut writer) = tokio::io::split(socket);
-                let mut lines = BufReader::new(reader).lines();
-                let device_ip = addr.ip().to_string();
+                let mut device_ip = addr.ip().to_string();
+                if device_ip.starts_with("::ffff:") {
+                    device_ip = device_ip.replace("::ffff:", "");
+                }
+                if device_ip == "::1" {
+                    device_ip = "127.0.0.1".to_string();
+                }
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64); // Increased buffer to handle audio + frame bursts
+                info!("🔌 New connection from: {}", device_addr);
+                registry.add(device_addr.clone(), tx.clone());
+                
+                // Writer Task
+                tokio::spawn(async move {
+                    while let Some(msg) = rx.recv().await {
+                        if writer.write_all(&msg).await.is_err() { break; }
+                        let _ = writer.flush().await;
+                    }
+                });
 
-                while let Ok(Some(line)) = lines.next_line().await {
-                    match serde_json::from_str::<InputEvent>(&line) {
-                        Ok(event) => {
-                            match event {
-                                InputEvent::PairRequest { device_name, id, version } => {
-                                    info!("Pair request from: {} ({}) [v{}]", device_name, id, version);
+                // Metadata Task
+                let audio_analyzer_m = audio_analyzer.clone();
+                let media_manager_m = media_manager.clone();
+                let tx_m = tx.clone();
+                tokio::spawn(async move {
+                    loop {
+                        if let Some(metadata) = media_manager_m.get_current_player_metadata().await {
+                            audio_analyzer_m.set_target_app(Some(metadata.player_name.clone()));
+                            
+                            // Update global playing state
+                            {
+                                let mut state = STATE.lock().unwrap();
+                                state.media_playing = metadata.status == "Playing";
+                            }
+
+                            let pkt = crate::protocol::ControlResponse::MediaStatus { metadata: Some(metadata) };
+                            if let Ok(bin) = rmp_serde::encode::to_vec_named(&pkt) {
+                                let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+                                msg.extend_from_slice(&bin);
+                                if let Err(_) = tx_m.send(msg).await { break; }
+                            }
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    }
+                });
+
+                // Spectrum Task (Fast & High Priority)
+                let tx_s = tx.clone();
+                let device_ip_s = device_ip.clone();
+                let audio_analyzer_s = audio_analyzer.clone();
+                tokio::spawn(async move {
+                    let mut was_playing = true;
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+                        let (is_trusted, media_playing) = {
+                            let state = STATE.lock().unwrap();
+                            let trusted = state.devices.values().any(|d| d.ip == device_ip_s && d.status == "Trusted");
+                            (trusted, state.media_playing)
+                        };
+                        if !is_trusted { continue; }
+
+                        if !media_playing {
+                            if was_playing {
+                                let spectrum_pkt = crate::protocol::BinaryPacket::Spectrum { bands: vec![0.0; 7] };
+                                if let Ok(bin) = rmp_serde::encode::to_vec_named(&spectrum_pkt) {
+                                    let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+                                    msg.extend_from_slice(&bin);
+                                    let _ = tx_s.try_send(msg);
+                                }
+                                was_playing = false;
+                            }
+                            continue;
+                        }
+                        
+                        was_playing = true;
+                        let bands = audio_analyzer_s.get_levels();
+                        let spectrum_pkt = crate::protocol::BinaryPacket::Spectrum { bands };
+                        if let Ok(bin) = rmp_serde::encode::to_vec_named(&spectrum_pkt) {
+                            let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+                            msg.extend_from_slice(&bin);
+                            let _ = tx_s.try_send(msg); 
+                        }
+                    }
+                });
+
+                // Screen Frame Task (Lower Priority, Heavy)
+                let tx_f = tx.clone();
+                let device_ip_f = device_ip.clone();
+                let screen_streamer_f = screen_streamer.clone();
+                tokio::spawn(async move {
+                    let mut last_frame_data: Option<Vec<u8>> = None;
+                    let mut trust_check_counter = 0;
+                    let mut is_trusted = false;
+
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+                        
+                        // Check trust status every ~1 second (60 iterations) to save CPU
+                        if trust_check_counter == 0 {
+                            is_trusted = {
+                                let state = STATE.lock().unwrap();
+                                state.devices.values().any(|d| d.ip == device_ip_f && d.status == "Trusted")
+                            };
+                            trust_check_counter = 60;
+                        }
+                        trust_check_counter -= 1;
+                        
+                        if !is_trusted { continue; }
+
+                        if let Some(frame) = screen_streamer_f.get_latest_frame() {
+                            let is_new = match &last_frame_data {
+                                Some(last) => {
+                                    // Check if size changed or if start/mid/end bytes changed
+                                    last.len() != frame.len() || 
+                                    last[..last.len().min(64)] != frame[..frame.len().min(64)] ||
+                                    last[last.len()/2..last.len()/2+64.min(last.len()/2)] != frame[frame.len()/2..frame.len()/2+64.min(frame.len()/2)]
+                                },
+                                None => true,
+                            };
+                            
+                            if is_new {
+                                let frame_pkt = crate::protocol::BinaryPacket::Frame { b: frame.clone() };
+                                if let Ok(bin) = rmp_serde::encode::to_vec_named(&frame_pkt) {
+                                    let mut msg = (bin.len() as u32).to_be_bytes().to_vec();
+                                    msg.extend_from_slice(&bin);
                                     
-                                    let server_version = env!("CARGO_PKG_VERSION");
-                                    // Verify Version compatibility
-                                    if version != server_version && !version.is_empty() {
-                                        info!("⚠️ Version mismatch: Client v{}, Server v{}", version, server_version);
-                                        let response = serde_json::json!({
-                                            "type": "pair_response",
-                                            "data": {
-                                                "status": "VersionMismatch",
-                                                "server_version": server_version,
-                                                "message": format!("Update required! Server is v{}, but your app is v{}.", server_version, version)
+                                    // Use try_send to avoid blocking the loop if network is slow
+                                    // Slow network should result in dropped frames, not lag.
+                                    match tx_f.try_send(msg) {
+                                        Ok(_) => {
+                                            if last_frame_data.is_none() {
+                                                info!("🖼️ [SIGNAL] First frame successfully transmitted to client at {}! (Size: {} bytes)", device_ip_f, frame.len());
                                             }
-                                        });
-                                        if let Ok(json) = serde_json::to_string(&response) {
-                                            let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
+                                            last_frame_data = Some(frame);
                                         }
-                                        let _ = writer.flush().await;
-                                        return; 
-                                    }
-
-                                    let (status, should_notify) = {
-                                        let mut state = STATE.lock().unwrap();
-                                        
-                                        // 1. Check if this IP is already blocked/declined (Nuclear Spam Protection)
-                                        let ip_blocked_or_declined = state.devices.values()
-                                            .find(|d| d.ip == device_ip && (d.status == "Blocked" || d.status == "Declined"))
-                                            .map(|d| d.status.clone());
-
-                                        if let Some(blocked_status) = ip_blocked_or_declined {
-                                            info!("Rejecting request from {} due to existing {} status on IP", device_ip, blocked_status);
-                                            (blocked_status, false)
-                                        } else if let Some(existing) = state.devices.get(&id) {
-                                            // 2. Exact ID match
-                                            (existing.status.clone(), false)
-                                        } else {
-                                            // 3. ID match failed, check if we have a dangling entry for this IP (e.g. reinstall) to migrate
-                                            let same_ip_entry = state.devices.iter()
-                                                .find(|(_, dev)| dev.ip == device_ip)
-                                                .map(|(k, v)| (k.clone(), v.clone()));
-                                            
-                                            if let Some((old_id, old_dev)) = same_ip_entry {
-                                                // MIGRATING OLD IP DATA TO NEW ID
-                                                state.devices.remove(&old_id);
-                                                let new_status = old_dev.status; // Could be Trusted/Pending
-                                                
-                                                state.devices.insert(id.clone(), DeviceInfo {
-                                                    id: id.clone(),
-                                                    name: device_name.clone(),
-                                                    status: new_status.clone(),
-                                                    ip: device_ip.clone(),
-                                                });
-                                                
-                                                info!("Migrated device IP {}: {} -> {} (Status: {})", device_ip, old_id, id, new_status);
-                                                (new_status, false) 
-                                            } else {
-                                                // 4. Truly NEW request
-                                                state.devices.insert(id.clone(), DeviceInfo {
-                                                    id: id.clone(),
-                                                    name: device_name.clone(),
-                                                    status: "Pending".to_string(),
-                                                    ip: device_ip.clone(),
-                                                });
-                                                ("Pending".to_string(), true)
-                                            }
+                                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                            debug!("⚠️ [SIGNAL] Frame dropped for {}: channel full", device_ip_f);
                                         }
-                                    };
-
-                                    if should_notify {
-                                        let device_name_c = device_name.clone();
-                                        let id_c = id.clone();
-                                        
-                                        std::thread::spawn(move || {
-                                            let notification = Notification::new()
-                                                .appname("Wayland Connect")
-                                                .summary("New Connection Request")
-                                                .body(&format!("'{}' wants to connect.", device_name_c))
-                                                .icon("network-wireless")
-                                                .action("approve", "Approve")
-                                                .action("decline", "Decline")
-                                                .show();
-                                                
-                                            if let Ok(handle) = notification {
-                                                handle.wait_for_action(move |action| {
-                                                    match action {
-                                                        "approve" => {
-                                                            info!("Notification Action: Approving {}", id_c);
-                                                            let mut state = STATE.lock().unwrap();
-                                                            if let Some(dev) = state.devices.get_mut(&id_c) {
-                                                                dev.status = "Trusted".to_string();
-                                                                state.save();
-                                                            }
-                                                        },
-                                                        "decline" => {
-                                                            info!("Notification Action: Declining {}", id_c);
-                                                            let mut state = STATE.lock().unwrap();
-                                                            if let Some(dev) = state.devices.get_mut(&id_c) {
-                                                                dev.status = "Declined".to_string();
-                                                                state.save();
-                                                            }
-                                                        },
-                                                        _ => {}
-                                                    }
-                                                });
-                                            }
-                                        });
-                                    }
-
-                                    let server_name = std::process::Command::new("hostname").output()
-                                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                                        .unwrap_or_else(|_| "Linux PC".to_string());
-
-                                    // Send Status Response back to Android
-                                    let response = serde_json::json!({
-                                        "type": "pair_response",
-                                        "data": {
-                                            "status": status,
-                                            "server_version": server_version,
-                                            "server_name": server_name
-                                        }
-                                    });
-                                    
-                                    if let Ok(json) = serde_json::to_string(&response) {
-                                        let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
-                                    }
-
-                                    // If Declined or Blocked, close the connection immediately to stop any polling spam
-                                    if status == "Declined" || status == "Blocked" {
-                                        let _ = writer.flush().await;
-                                        return; 
-                                    }
-                                },
-                                InputEvent::GetStatus => {
-                                    // Management App asking for list
-                                    let devices = {
-                                        let state = STATE.lock().unwrap();
-                                        state.devices.values().cloned().collect()
-                                    };
-                                    let response = StatusResponse { devices };
-                                    if let Ok(json) = serde_json::to_string(&response) {
-                                        let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
-                                    }
-                                },
-                                InputEvent::ApproveDevice { id } => {
-                                    info!("Approving device: {}", id);
-                                    let device_name = {
-                                        let mut state = STATE.lock().unwrap();
-                                        if let Some(dev) = state.devices.get_mut(&id) {
-                                            dev.status = "Trusted".to_string();
-                                            let name = dev.name.clone();
-                                            state.save();
-                                            Some(name)
-                                        } else {
-                                            None
-                                        }
-                                    };
-                                    
-                                    if let Some(name) = device_name {
-                                        // Notify user
-                                        let _ = Notification::new()
-                                            .appname("Wayland Connect")
-                                            .summary("Device Paired")
-                                            .body(&format!("{} is now connected.", name))
-                                            .icon("security-high")
-                                            .show();
-                                    }
-                                },
-                                InputEvent::RejectDevice { id } => {
-                                    info!("Rejecting device: {}", id);
-                                    let mut state = STATE.lock().unwrap();
-                                    if let Some(dev) = state.devices.get_mut(&id) {
-                                        dev.status = "Declined".to_string();
-                                        state.save();
-                                    }
-                                },
-                                InputEvent::BlockDevice { id } => {
-                                    info!("Blocking device: {}", id);
-                                    let mut state = STATE.lock().unwrap();
-                                    if let Some(dev) = state.devices.get_mut(&id) {
-                                        dev.status = "Blocked".to_string();
-                                    } else {
-                                         // Create a placeholder if trying to block a non-existent (or removed) ID
-                                         state.devices.insert(id.clone(), DeviceInfo {
-                                             id: id.clone(),
-                                             name: "Blocked Device".to_string(),
-                                             status: "Blocked".to_string(),
-                                             ip: "Unknown".to_string(),
-                                         });
-                                    }
-                                    state.save();
-                                },
-                                InputEvent::UnblockDevice { id } => {
-                                    info!("Unblocking device: {}", id);
-                                    let mut state = STATE.lock().unwrap();
-                                    state.devices.remove(&id);
-                                    state.save();
-                                },
-                                _ => {
-                                    let is_trusted = {
-                                        let state = STATE.lock().unwrap();
-                                        state.devices.values().any(|d| d.ip == device_ip && d.status == "Trusted")
-                                    };
-
-                                    if is_trusted {
-                                        match event {
-                                            InputEvent::MediaControl { action } => {
-                                                if let Err(e) = media_manager.send_command(&action).await {
-                                                    error!("Media control error: {}", e);
-                                                }
-                                            },
-                                            InputEvent::MediaGetStatus => {
-                                                let metadata = media_manager.get_current_player_metadata().await;
-                                                let resp = MediaResponse { metadata };
-                                                if let Ok(json) = serde_json::to_string(&resp) {
-                                                    let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
-                                                }
-                                            },
-                                            InputEvent::PointerData { active, mode, pitch, roll, size } => {
-                                                // info!("📍 PointerData from {}: active={}, mode={}, pitch={:.2}, roll={:.2}, size={:.2}", device_ip, active, mode, pitch, roll, size);
-                                                pointer_manager.update(active, mode, pitch, roll, size);
-                                            },
-                                            InputEvent::PresentationControl { action } => {
-                                                // Send keyboard arrow keys for slide control
-                                                use crate::protocol::InputEvent;
-                                                let key_event = match action.as_str() {
-                                                    "prev" => InputEvent::KeyPress { key: "Left".to_string() },
-                                                    "next" => InputEvent::KeyPress { key: "Right".to_string() },
-                                                    _ => continue,
-                                                };
-                                                if let Err(e) = adapter.send_event(key_event).await {
-                                                    error!("Failed to send presentation control: {}", e);
-                                                }
-                                            },
-                                            InputEvent::SetPointerMonitor { monitor } => {
-                                                info!("🖥️ SetPointerMonitor: monitor={}", monitor);
-                                                pointer_manager.set_monitor(monitor);
-                                            },
-                                            _ => {
-
-                                                if let Err(e) = adapter.send_event(event).await {
-                                                    error!("Failed to forward event: {}", e);
-                                                }
-                                            }
+                                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                            error!("❌ [SIGNAL] Transmission channel closed for {}", device_ip_f);
+                                            break;
                                         }
                                     }
                                 }
                             }
                         }
-                        Err(e) => error!("JSON Error: {}", e),
+                    }
+                });
+
+                // Reader Loop
+                let mut len_buf = [0u8; 4];
+                loop {
+                    match reader.read_exact(&mut len_buf).await {
+                        Ok(_) => {
+                            let len = u32::from_be_bytes(len_buf) as usize;
+                            if len > 10 * 1024 * 1024 { break; }
+                            let mut payload = vec![0u8; len];
+                            if reader.read_exact(&mut payload).await.is_ok() {
+                                if let Ok(event) = rmp_serde::from_slice::<InputEvent>(&payload) {
+                                     if handler.handle_event(event, &device_ip, &device_addr, &tx).await { break; }
+                                }
+                            } else { break; }
+                        }
+                        Err(_) => break,
                     }
                 }
 
-                // Disconnect handling
                 let mut state = STATE.lock().unwrap();
-                let mut to_remove = Vec::new();
-                for (id, dev) in state.devices.iter() {
-                    // Remove "Pending" devices from the list when they disconnect so they don't linger in Dashboard
-                    if dev.ip == device_ip && dev.status == "Pending" {
-                        to_remove.push(id.clone());
-                    }
-                }
-                for id in to_remove {
-                    state.devices.remove(&id);
-                    info!("Removed disconnected pending device from activity: {}", id);
-                }
+                state.devices.retain(|_, d| !(d.ip == device_ip && d.status == "Pending"));
                 state.save();
+                registry.remove(&device_addr);
+                screen_streamer.stop();
             });
         }
     }
+}
+
+fn get_server_host_name() -> String {
+    std::process::Command::new("hostname").output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .ok()
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .unwrap_or_else(|| "WaylandConnect PC".to_string())
 }

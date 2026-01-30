@@ -1,0 +1,11 @@
+[package]
+name = "wc_config"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wc_core = { path = "../core" }
+wc_common = { path = "../common" }
+serde = { version = "1.0", features = ["derive"] }
+config = "0.13"
+anyhow = "1.0"

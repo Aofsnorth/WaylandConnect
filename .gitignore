@@ -11,6 +11,8 @@ build/
 # Rust
 target/
 **/*.rs.bk
+**/*.bak
+**/*.old
 Cargo.lock
 
 # IDEs

@@ -5,9 +5,14 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'dart:ui';
 
 import 'dart:io';
+import 'package:wayland_connect_android/l10n/app_localizations.dart';
+import '../main.dart';
+import '../utils/protocol.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback onBack;
+  final Socket? socket;
+  const SettingsScreen({super.key, required this.onBack, this.socket});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -17,6 +22,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _startOnBoot = true;
   bool _notificationGranted = false;
   bool _batteryOptimized = false;
+  bool _autoConnect = true;
+  bool _autoReconnect = true;
 
   @override
   void initState() {
@@ -29,6 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _startOnBoot = prefs.getBool('start_on_boot') ?? true;
+      _autoConnect = prefs.getBool('auto_connect') ?? true;
+      _autoReconnect = prefs.getBool('auto_reconnect') ?? true;
     });
   }
 
@@ -93,57 +102,191 @@ X-GNOME-Autostart-enabled=true
     }
   }
 
+  Future<void> _toggleAutoConnect(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('auto_connect', value);
+    setState(() => _autoConnect = value);
+  }
+
+  Future<void> _toggleAutoReconnect(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('auto_reconnect', value);
+    setState(() => _autoReconnect = value);
+
+    if (widget.socket != null) {
+      final deviceId = prefs.getString('unique_device_id') ?? "unknown";
+      widget.socket!.add(ProtocolHandler.encodePacket({
+        "type": "set_device_auto_reconnect",
+        "data": {"id": deviceId, "enabled": value}
+      }));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    const accentColor = Colors.white70;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text("Settings", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          _buildSectionHeader("Boot & Background"),
-          _buildSettingCard(
-            icon: Icons.power_settings_new_rounded,
-            title: "Start on Boot",
-            subtitle: "Automatically start service when phone turns on",
-            trailing: Switch(
-              value: _startOnBoot,
-              onChanged: _toggleStartOnBoot,
-              activeColor: Colors.white,
+      backgroundColor: const Color(0xFF030303),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 120,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white70),
+              onPressed: () {
+                if (widget.onBack != null) {
+                  widget.onBack!();
+                } else {
+                  Navigator.maybePop(context);
+                }
+              },
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              centerTitle: false,
+              titlePadding: const EdgeInsets.only(left: 40, bottom: 20),
+              title: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(AppLocalizations.of(context)!.configuration, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, letterSpacing: 4, fontSize: 8)),
+                  Text(AppLocalizations.of(context)!.settings, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -1)),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 32),
-          _buildSectionHeader("Permissions"),
-          _buildPermissionCard(
-            icon: Icons.notifications_active_rounded,
-            title: "Notifications",
-            subtitle: "Required to keep connection alive in background",
-            isGranted: _notificationGranted,
-            onTap: () async {
-              await Permission.notification.request();
-              _checkPermissions();
-            },
-          ),
-          _buildPermissionCard(
-            icon: Icons.battery_saver_rounded,
-            title: "Ignore Battery Optimization",
-            subtitle: "Prevent Android from killing the app in standby",
-            isGranted: _batteryOptimized,
-            onTap: () async {
-              await Permission.ignoreBatteryOptimizations.request();
-              _checkPermissions();
-            },
-          ),
-          const SizedBox(height: 48),
-          const Center(
-            child: Text(
-              "Wayland Connect v1.0.4",
-              style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 2),
-            ),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: Column(
+                  children: [
+                    _buildSectionHeader(AppLocalizations.of(context)!.systemBackground),
+                    _buildSettingCard(
+                         icon: Icons.language,
+                         title: AppLocalizations.of(context)!.language,
+                         subtitle: AppLocalizations.of(context)!.selectLanguage,
+                         trailing: DropdownButton<String>(
+                           value: Localizations.localeOf(context).languageCode,
+                           dropdownColor: const Color(0xFF1E1E1E),
+                           style: const TextStyle(color: Colors.white),
+                           underline: const SizedBox(),
+                           items: [
+                             DropdownMenuItem(value: 'en', child: Text(AppLocalizations.of(context)!.english)),
+                             DropdownMenuItem(value: 'id', child: Text(AppLocalizations.of(context)!.indonesian)),
+                           ],
+                           onChanged: (String? newValue) {
+                             if (newValue != null) {
+                               WaylandConnectApp.setLocale(context, Locale(newValue));
+                             }
+                           },
+                         ),
+                    ),
+                    _buildSettingCard(
+                      icon: Icons.power_settings_new_rounded,
+                      title: AppLocalizations.of(context)!.startOnBoot,
+                      subtitle: AppLocalizations.of(context)!.automateService,
+                      trailing: Switch(
+                        value: _startOnBoot,
+                        onChanged: _toggleStartOnBoot,
+                        activeColor: accentColor,
+                        activeTrackColor: accentColor.withOpacity(0.2),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      icon: Icons.sync_rounded,
+                      title: AppLocalizations.of(context)!.autoConnect,
+                      subtitle: AppLocalizations.of(context)!.autoConnectSubtitle,
+                      trailing: Switch(
+                        value: _autoConnect,
+                        onChanged: _toggleAutoConnect,
+                        activeColor: accentColor,
+                        activeTrackColor: accentColor.withOpacity(0.2),
+                      ),
+                    ),
+                    if (widget.socket != null)
+                      _buildSettingCard(
+                        icon: Icons.history_rounded,
+                        title: AppLocalizations.of(context)!.autoReconnect,
+                        subtitle: AppLocalizations.of(context)!.autoReconnectSubtitle,
+                        trailing: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: OutlinedButton(
+                            onPressed: () async {
+                               final prefs = await SharedPreferences.getInstance();
+                               final deviceId = prefs.getString('unique_device_id') ?? "android_test_id";
+                               widget.socket!.add(ProtocolHandler.encodePacket({
+                                 "type": "request_auto_reconnect",
+                                 "data": {"id": deviceId}
+                               }));
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 SnackBar(content: Text(AppLocalizations.of(context)!.approvalRequired))
+                               );
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: accentColor.withOpacity(0.3)),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            child: Text(
+                              AppLocalizations.of(context)!.requestAutoReconnect,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 32),
+                    _buildSectionHeader(AppLocalizations.of(context)!.securityAccess),
+                    _buildPermissionCard(
+                      icon: Icons.notifications_active_rounded,
+                      title: AppLocalizations.of(context)!.notifications,
+                      subtitle: AppLocalizations.of(context)!.persistentLink,
+                      isGranted: _notificationGranted,
+                      accent: accentColor,
+                      onTap: () async {
+                        await Permission.notification.request();
+                        _checkPermissions();
+                      },
+                    ),
+                    _buildPermissionCard(
+                      icon: Icons.battery_saver_rounded,
+                      title: AppLocalizations.of(context)!.powerLogic,
+                      subtitle: AppLocalizations.of(context)!.bypassBattery,
+                      isGranted: _batteryOptimized,
+                      accent: accentColor,
+                      onTap: () async {
+                        await Permission.ignoreBatteryOptimizations.request();
+                        _checkPermissions();
+                      },
+                    ),
+                    const SizedBox(height: 60),
+                    Center(
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              "WAYLAND CONNECT v1.0.0",
+                              style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 3),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text("DEVELOPED BY ARTHENYX", style: TextStyle(color: Colors.white10, fontSize: 7, letterSpacing: 1)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ]),
           ),
         ],
       ),
@@ -193,37 +336,37 @@ X-GNOME-Autostart-enabled=true
     );
   }
 
-  Widget _buildPermissionCard({required IconData icon, required String title, required String subtitle, required bool isGranted, required VoidCallback onTap}) {
+  Widget _buildPermissionCard({required IconData icon, required String title, required String subtitle, required bool isGranted, required VoidCallback onTap, required Color accent}) {
     return GestureDetector(
       onTap: isGranted ? null : onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isGranted ? Colors.green.withOpacity(0.05) : Colors.white.withOpacity(0.03),
+          color: isGranted ? accent.withOpacity(0.05) : Colors.white.withOpacity(0.03),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isGranted ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.05)),
+          border: Border.all(color: isGranted ? accent.withOpacity(0.2) : Colors.white.withOpacity(0.05)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: isGranted ? Colors.green.withOpacity(0.1) : Colors.white.withOpacity(0.05), shape: BoxShape.circle),
-              child: Icon(icon, color: isGranted ? Colors.greenAccent : Colors.white70, size: 20),
+              decoration: BoxDecoration(color: isGranted ? accent.withOpacity(0.1) : Colors.white.withOpacity(0.05), shape: BoxShape.circle),
+              child: Icon(icon, color: isGranted ? accent : Colors.white70, size: 20),
             ),
             const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(color: isGranted ? Colors.white : Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
                 ],
               ),
             ),
             if (isGranted)
-              const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 24)
+              Icon(Icons.check_circle_rounded, color: accent, size: 20)
             else
               const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 14),
           ],

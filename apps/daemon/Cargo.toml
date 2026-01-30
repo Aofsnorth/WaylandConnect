@@ -1,0 +1,19 @@
+[package]
+name = "wc_daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wc_core = { path = "../../core" }
+wc_common = { path = "../../common" }
+wc_config = { path = "../../config" }
+wc_capture = { path = "../../capture" }
+wc_codecs = { path = "../../codecs" }
+wc_transport = { path = "../../transport" }
+wc_processing = { path = "../../processing" }
+wc_platform = { path = "../../platform" }
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+tracing = "0.1"
+serde_json = "1.0"
+env_logger = "0.10"

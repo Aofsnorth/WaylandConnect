@@ -1,10 +1,19 @@
 [package]
 name = "wayland_pointer_overlay"
-version = "1.0.3"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-gtk4 = "0.8"
-gtk4-layer-shell = "0.3"
-cairo-rs = "0.19"
-glib = "0.19"
+gtk4 = "0.9"
+gtk4-layer-shell = "0.4"
+cairo-rs = { version = "0.20", features = ["png", "pdf", "svg", "use_glib"] }
+glib = "0.20"
+ashpd = { version = "0.9", features = ["pipewire"] }
+pipewire = "0.8"
+libspa = "0.8"
+image = "0.24"
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+log = "0.4"
+env_logger = "0.10"
+wc_core = { path = "../core" }

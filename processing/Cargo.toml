@@ -1,0 +1,13 @@
+[package]
+name = "wc_processing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wc_core = { path = "../core" }
+wc_common = { path = "../common" }
+rustfft = "6.1"
+cpal = "0.15"
+anyhow = "1.0"
+tracing = "0.1"
+bytes = "1.5"

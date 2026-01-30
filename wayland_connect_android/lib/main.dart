@@ -10,6 +10,9 @@ import 'dart:ui';
 import 'dart:async';
 import 'package:window_manager/window_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'utils/protocol.dart';
+import 'l10n/app_localizations.dart';
+import 'package:crypto/crypto.dart';
 
 
 import 'screens/touchpad_screen.dart';
@@ -19,6 +22,9 @@ import 'screens/media_screen.dart';
 import 'screens/pointer_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/disconnect_screen.dart';
+import 'screens/device_scanner_dialog.dart';
+import 'screens/screen_share_screen.dart';
+// Removed unused AppLauncherScreen import
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
@@ -35,10 +41,10 @@ Future<void> initializeService() async {
     'connection_status', 
     'Connection Status',
     description: 'Shows if PC is connected',
-    importance: fln.Importance.max,
+    importance: fln.Importance.low,
     playSound: false,
     enableVibration: false,
-    showBadge: true,
+    showBadge: false,
   );
 
   const fln.AndroidInitializationSettings initializationSettingsAndroid = fln.AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -69,10 +75,10 @@ Future<void> initializeService() async {
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: autoStart,
-      isForegroundMode: true,
+      isForegroundMode: false, 
       notificationChannelId: 'connection_status',
-      initialNotificationTitle: 'searching for pc...',
-      initialNotificationContent: 'preparing connection...',
+      initialNotificationTitle: '',
+      initialNotificationContent: '',
       foregroundServiceNotificationId: 888,
     ),
     iosConfiguration: IosConfiguration(),
@@ -85,43 +91,33 @@ void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   
   if (service is AndroidServiceInstance) {
-    service.setAsForegroundService();
-    
     final fln.FlutterLocalNotificationsPlugin notifications = fln.FlutterLocalNotificationsPlugin();
 
-    void updateNotification(String content) async {
+    void updateNotification(String title) async {
       await notifications.show(
         id: 888,
-        title: content, // Just show the status (e.g., 'connected to desktop') in the title
-        body: null,    // Hide body for a cleaner single-line look
+        title: title, 
+        body: null, // No body, just the "Connected to..." title as requested
+
         notificationDetails: const fln.NotificationDetails(
           android: fln.AndroidNotificationDetails(
             'connection_status',
             'Connection Status',
             channelDescription: 'Shows connection state',
-            importance: fln.Importance.max,
-            priority: fln.Priority.high,
+            importance: fln.Importance.low,
+            priority: fln.Priority.low,
             ongoing: true,
+            autoCancel: false,
             showWhen: false,
             onlyAlertOnce: true,
+            // subText: 'Wayland Connect', // Removed to keep it minimal
             color: Color(0xFF000000), 
             category: fln.AndroidNotificationCategory.service,
             visibility: fln.NotificationVisibility.public,
-            actions: <fln.AndroidNotificationAction>[
-              fln.AndroidNotificationAction(
-                'stop_service',
-                'DISCONNECT',
-                showsUserInterface: false,
-                cancelNotification: true,
-              ),
-            ],
           ),
         ),
       );
     }
-
-    // Immediate notification
-    updateNotification("service active...");
 
     service.on('setAsForeground').listen((event) {
       service.setAsForegroundService();
@@ -134,10 +130,18 @@ void onStart(ServiceInstance service) async {
     service.on('stopService').listen((event) {
       service.stopSelf();
     });
-
-    service.on('updateStatus').listen((event) {
-      String status = event?['content'] ?? "service running";
-      updateNotification(status.toLowerCase());
+    
+    service.on('updateStatus').listen((event) async {
+      String status = event?['content'] ?? "";
+      if (status.toLowerCase().contains("connected to")) {
+        // Ensure "Connected to [PC Name]"
+        String title = status.replaceAll(RegExp(r'connected to', caseSensitive: false), 'Connected To');
+        updateNotification(title);
+      } else {
+        // If not connected, remove notification by going to background
+        service.setAsBackgroundService();
+        await notifications.cancel(id: 888);
+      }
     });
   }
 }
@@ -167,6 +171,7 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
     systemNavigationBarDividerColor: Colors.transparent,
   ));
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // Force edge-to-edge
   
   // Don't request here, do it in the UI or after frame
@@ -182,8 +187,44 @@ void notificationTapBackground(fln.NotificationResponse notificationResponse) {
   }
 }
 
-class WaylandConnectApp extends StatelessWidget {
+class WaylandConnectApp extends StatefulWidget {
   const WaylandConnectApp({super.key});
+
+  static void setLocale(BuildContext context, Locale newLocale) {
+    _WaylandConnectAppState? state = context.findAncestorStateOfType<_WaylandConnectAppState>();
+    state?.setLocale(newLocale);
+  }
+
+  @override
+  State<WaylandConnectApp> createState() => _WaylandConnectAppState();
+}
+
+class _WaylandConnectAppState extends State<WaylandConnectApp> {
+  Locale? _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocale();
+  }
+
+  Future<void> _loadLocale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? languageCode = prefs.getString('language_code');
+    if (languageCode != null) {
+      setState(() {
+        _locale = Locale(languageCode);
+      });
+    }
+  }
+
+  void setLocale(Locale newLocale) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language_code', newLocale.languageCode);
+    setState(() {
+      _locale = newLocale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -201,6 +242,9 @@ class WaylandConnectApp extends StatelessWidget {
         fontFamily: 'Roboto',
         useMaterial3: true,
       ),
+      locale: _locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: const MainScreen(),
     );
   }
@@ -214,40 +258,91 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  SecureSocket? _socket;
+  Socket? _socket;
   bool _isConnected = false;
+  bool _zoomEnabled = false;
   String _approvalStatus = "Unknown"; // Unknown, Pending, Trusted, Declined, Blocked
   final TextEditingController _ipController = TextEditingController(text: "192.168.1.1");
   final TextEditingController _portController = TextEditingController(text: "12345");
   int _currentIndex = 0;
+  final List<int> _navigationHistory = [0];
   Stream<Uint8List>? _socketStream;
   bool _isScrolled = false;
   OverlayEntry? _errorOverlay;
   String? _serverName;
+  final ProtocolHandler _protocolHandler = ProtocolHandler();
 
   @override
   void initState() {
     super.initState();
     _loadSettingsAndConnect();
     _startAutoReconnectLoop();
+    _setupVolumeChannel();
+  }
+
+  // CENTRALIZED VOLUME HANDLING
+  final _volumeStreamController = StreamController<String>.broadcast();
+  Stream<String> get _volumeEventStream => _volumeStreamController.stream;
+
+  void _setupVolumeChannel() {
+    const channel = MethodChannel('com.arthenyx.wayland_connect/volume');
+    channel.setMethodCallHandler((call) async {
+       if (call.method != null) {
+         _volumeStreamController.add(call.method);
+       }
+    });
+  }
+
+  void _setInterceptVolume(bool enabled) {
+    const channel = MethodChannel('com.arthenyx.wayland_connect/volume');
+    channel.invokeMethod('setInterceptVolume', {'enabled': enabled});
+  }
+
+  @override 
+  void dispose() { // Clean up
+     _volumeStreamController.close();
+     super.dispose();
   }
 
   void _startAutoReconnectLoop() {
-    Timer.periodic(const Duration(seconds: 10), (timer) {
+    Timer.periodic(const Duration(seconds: 3), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
       if (!_isConnected && _approvalStatus == "Trusted") {
-        _connect(silent: true);
+        _checkAutoConnectAndConnect();
       }
     });
   }
 
+  void _checkAutoConnectAndConnect() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool autoConnect = prefs.getBool('auto_connect') ?? true;
+    if (autoConnect) {
+      _connect(silent: true);
+    }
+  }
+
   void _onTabChanged(int index) {
+    if (_currentIndex == index) return;
     setState(() {
+      if (_navigationHistory.length > 20) _navigationHistory.removeAt(0);
+      _navigationHistory.add(index);
       _currentIndex = index;
-      _isScrolled = false; // Reset scroll state saat ganti tab
+      _isScrolled = false; // Reset scroll state (blur) immediately when changing tabs
+      _setInterceptVolume([2, 3].contains(index));
+      
+      // ORIENTATION LOCKING: Only allow landscape in Screen Share (tab 4)
+      if (index == 4) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      }
     });
   }
 
@@ -260,137 +355,74 @@ class _MainScreenState extends State<MainScreen> {
       _serverName = prefs.getString('server_name');
     });
     
-    _connect(silent: true);
+    final bool autoConnect = prefs.getBool('auto_connect') ?? true;
+    if ((_approvalStatus == "Trusted" || _approvalStatus == "Pending") && autoConnect) {
+      _connect(silent: true);
+    }
+    
     if (_approvalStatus == "Trusted") _updateServiceStatus("searching for pc...");
   }
 
+
   void _showConnectionDialog() {
-    bool isChecking = false;
-
     showDialog(
-      context: context, 
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: const Text("Connect to PC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("Ensure Wayland Connect is running on your PC.", style: TextStyle(color: Colors.white54, fontSize: 13)),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _ipController,
-                  enabled: !isChecking,
-                  cursorColor: Colors.white,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: "PC IP Address",
-                    labelStyle: const TextStyle(color: Colors.white38),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.white),
-                    ),
-                    prefixIcon: const Icon(Icons.computer, color: Colors.white54),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _portController,
-                  enabled: !isChecking,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  cursorColor: Colors.white,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: "Port",
-                    labelStyle: const TextStyle(color: Colors.white38),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.white),
-                    ),
-                    prefixIcon: const Icon(Icons.hub_outlined, color: Colors.white54),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                child: const Text("Cancel", style: TextStyle(color: Colors.white38)),
-                onPressed: isChecking ? null : () => Navigator.pop(ctx),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  minimumSize: const Size(100, 45),
-                ),
-                onPressed: isChecking ? null : () async {
-                  final ip = _ipController.text.trim();
-                  final portStr = _portController.text.trim();
-                  
-                  // 1. Validate Formats
-                  final ipRegex = RegExp(r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$');
-                  if (!ipRegex.hasMatch(ip) && ip != 'localhost') {
-                    _showError("Invalid IP Address format.");
-                    return;
-                  }
-                  
-                  final port = int.tryParse(portStr);
-                  if (port == null || port < 1024 || port > 65535) {
-                    _showError("Invalid Port (1024-65535).");
-                    return;
-                  }
-
-                  // 2. Validate Service existence (The Check)
-                  setDialogState(() => isChecking = true);
-                  try {
-                    final testSocket = await SecureSocket.connect(
-                      ip, 
-                      port, 
-                      timeout: const Duration(seconds: 3),
-                      onBadCertificate: (cert) => true, // Self-signed support
-                    );
-                    testSocket.destroy(); // Success, close temp socket
-                    
-                    // 3. Save and Proceed
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setString('pc_ip', ip);
-                    await prefs.setString('pc_port', portStr);
-                    
-                    if (context.mounted) Navigator.pop(ctx);
-                    _connect();
-                  } catch (e) {
-                    setDialogState(() => isChecking = false);
-                    _showError("PC not found or Wayland Connect is OFF.");
-                  }
-                },
-                child: isChecking 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Text("Connect"),
-              )
-            ],
-          );
+      context: context,
+      builder: (ctx) => DeviceScannerDialog(),
+    ).then((result) async {
+      if (result != null) {
+        if (result is String) {
+           // Reload settings just saved by the dialog
+           final prefs = await SharedPreferences.getInstance();
+           setState(() {
+             _ipController.text = prefs.getString('pc_ip') ?? result;
+             _portController.text = prefs.getString('pc_port') ?? "12345";
+           });
+           
+           // Connect with feedback (silent: false)
+           _connect(silent: false);
         }
-      )
-    );
+      }
+    });
   }
+
 
   void _connect({bool silent = false}) async {
     _socket?.close();
     if (_isConnected) return;
     if (!silent) HapticFeedback.mediumImpact();
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final expectedFingerprint = prefs.getString('server_fingerprint');
+
       int port = int.tryParse(_portController.text) ?? 12345;
       final s = await SecureSocket.connect(
         _ipController.text, 
         port, 
-        timeout: const Duration(seconds: 4),
-        onBadCertificate: (cert) => true,
+        timeout: const Duration(seconds: 3),
+        onBadCertificate: (certificate) {
+          // 1. Calculate SHA-256 fingerprint of the certificate
+          final hash = sha256.convert(certificate.der).toString().toUpperCase();
+          final formattedHash = hash.replaceAllMapped(RegExp(r".{2}"), (match) => "${match.group(0)}:").substring(0, hash.length + (hash.length / 2).floor() - 1);
+          
+          debugPrint("🛡️ Received Cert Fingerprint: $formattedHash");
+          
+          if (expectedFingerprint != null && expectedFingerprint.isNotEmpty) {
+             if (expectedFingerprint == formattedHash) {
+                debugPrint("✅ Fingerprint matches pinned certificate.");
+                return true;
+             } else {
+                debugPrint("🚨 MITM ATTACK DETECTED? Fingerprint mismatch!");
+                debugPrint("   Expected: $expectedFingerprint");
+                debugPrint("   Got:      $formattedHash");
+                _showError("Security Alert: Server identity changed!");
+                return false;
+             }
+          }
+          
+          // First time connecting (TOFU) or not yet trusted
+          debugPrint("⚖️ First time connection or untrusted. Allowing for handshake...");
+          return true; 
+        },
       );
       setState(() {
         _socket = s;
@@ -404,44 +436,88 @@ class _MainScreenState extends State<MainScreen> {
       }
       _startPolling(); 
       _socketStream!.listen(
-        (data) {
-          try {
-            final str = String.fromCharCodes(data).trim();
-            final lines = str.split('\n');
-            for (var line in lines) {
-              if (line.isEmpty) continue;
-              try {
-                final json = jsonDecode(line);
-                 if (json['type'] == 'pair_response') {
-                    final status = json['data']['status'];
-                    final sName = json['data']['server_name'];
-                    if (sName != null) setState(() => _serverName = sName);
-                    
-                    _updateApprovalStatus(status);
-                    if (status == "Trusted") {
-                       HapticFeedback.heavyImpact();
-                       _showConnectedNotification();
-                       _updateServiceStatus("connected to ${_serverName ?? 'pc'}");
-                       FlutterBackgroundService().invoke("setAsForeground");
-                    }
-                   if (status == "Blocked") {
-                      HapticFeedback.vibrate();
-                      _disconnect();
+        (data) async {
+           // Binary Protocol Handling
+           try {
+             final packets = _protocolHandler.process(data);
+             for (final packet in packets) {
+                // Check packet type. MsgPack decodes maps as Map<dynamic, dynamic> usually.
+                // We cast to string keys if needed.
+                
+                // Expected format: {"type": "...", "data": ...}
+                if (packet is Map) {
+                   // Optimization: Skip binary/high-frequency packets (Spectrum/Frame)
+                   // and let specific screens handle them if they are listening to the same stream.
+                   if (packet.containsKey('t')) continue;
+
+                   final type = packet['type'];
+                   if (type == 'mirror_frame') continue; // Extra safety                   
+                   final pData = packet['data'];
+                   
+                   if (type == 'status_response' && pData != null) {
+                      final zoomEnabled = pData['zoom_enabled'] as bool?;
+                      if (zoomEnabled != null) {
+                        setState(() => _zoomEnabled = zoomEnabled);
+                      }
                    }
-                   if (status == "VersionMismatch") {
-                      _showVersionMismatchDialog(json['data']['message'] ?? "Update required.");
-                      _disconnect();
+
+                   if (type == 'mirror_request' && pData != null) {
+                      _showMirrorRequestDialog(pData['device_name'] ?? "Linux PC", pData['device_id'] ?? "");
+                   }
+
+                   if (type == 'mirror_status' && pData != null) {
+                      _showMirrorStatus(pData['allowed'] == true, pData['message'] ?? "");
+                   }
+
+                   if (type == 'pair_response') {
+                      final status = pData['status'];
+                      final sName = pData['server_name'];
+                      
+                      if (sName != null) {
+                        setState(() => _serverName = sName);
+                        final prefs = await SharedPreferences.getInstance();
+                        prefs.setString('server_name', sName);
+                      }
+                      
+                      _updateApprovalStatus(status, fingerprint: pData['fingerprint']);
+                      if (status == "Trusted") {
+                        HapticFeedback.heavyImpact();
+                        _showConnectedNotification();
+                        _updateServiceStatus("connected to ${_serverName ?? 'pc'}");
+                        FlutterBackgroundService().invoke("setAsForeground");
+                      }
+                      if (status == "Blocked" || status == "Declined") {
+                        HapticFeedback.vibrate();
+                        _disconnect();
+                      }
+                      if (status == "VersionMismatch") {
+                        _showVersionMismatchDialog(pData['message'] ?? "Update required.");
+                        _disconnect(manual: true);
+                      }
+                   }
+
+                   if (type == 'security_update' && pData != null) {
+                      final status = pData['status'];
+                      _updateApprovalStatus(status);
+                      if (status == "Blocked" || status == "Declined") {
+                         HapticFeedback.vibrate();
+                         _disconnect();
+                      } else if (status == "Trusted") {
+                         HapticFeedback.mediumImpact();
+                         // Auto-refresh or just wait for reconnect loop
+                      }
                    }
                 }
-              } catch (_) {}
-            }
-          } catch (e) {}
+             }
+           } catch (e) {
+             debugPrint("Protocol error: $e");
+           }
         },
         onDone: () => _onDisconnect(),
         onError: (e) => _onDisconnect(),
       );
     } catch (e) {
-      if (!silent) _showError("Connectivity Error: Host unreachable.");
+      if (!silent) _showError("Connection failed: $e");
     }
   }
 
@@ -452,38 +528,42 @@ class _MainScreenState extends State<MainScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.update, color: Colors.orangeAccent),
-            SizedBox(width: 12),
-            Text("Update Required", style: TextStyle(color: Colors.white)),
+            const Icon(Icons.update, color: Colors.orangeAccent),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context)!.updateRequired, style: const TextStyle(color: Colors.white)),
           ],
         ),
         content: Text(message, style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Dimiss", style: TextStyle(color: Colors.white38)),
+            child: Text(AppLocalizations.of(context)!.deny.toUpperCase(), style: const TextStyle(color: Colors.white38)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
             onPressed: () async {
-              final url = Uri.parse("https://github.com/arthenyx/WaylandConnect/releases/latest");
+              final url = Uri.parse("https://github.com/Aofsnorth/WaylandConnect/releases/latest");
               if (await canLaunchUrl(url)) {
                 await launchUrl(url, mode: LaunchMode.externalApplication);
               }
             },
-            child: const Text("Update Now"),
+            child: Text(AppLocalizations.of(context)!.updateRequired), // Using same for now as fallback
           ),
         ],
       ),
     );
   }
 
-  Future<void> _updateApprovalStatus(String status) async {
+  Future<void> _updateApprovalStatus(String status, {String? fingerprint}) async {
     setState(() => _approvalStatus = status);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('approval_status', status);
+    if (fingerprint != null) {
+      await prefs.setString('server_fingerprint', fingerprint);
+      debugPrint("📌 Pinned Server Fingerprint: $fingerprint");
+    }
     if (_serverName != null) {
       await prefs.setString('server_name', _serverName!);
     } else {
@@ -512,8 +592,8 @@ class _MainScreenState extends State<MainScreen> {
      if (_socket != null) {
        String deviceName = "Unknown Device";
        String deviceId = "unknown_id";
+       final prefs = await SharedPreferences.getInstance();
        try {
-         final prefs = await SharedPreferences.getInstance();
          deviceId = prefs.getString('unique_device_id') ?? const Uuid().v4();
          if (!prefs.containsKey('unique_device_id')) await prefs.setString('unique_device_id', deviceId);
          
@@ -528,42 +608,36 @@ class _MainScreenState extends State<MainScreen> {
          }
        } catch (e) {}
 
-       String version = "1.0.4"; // Fallback
+       String version = "1.0.0"; // Fallback
        try {
           PackageInfo packageInfo = await PackageInfo.fromPlatform();
           version = packageInfo.version;
        } catch (_) {}
 
-       final event = {
-         "type": "pair_request", 
-         "data": {
-           "device_name": deviceName, 
-           "id": deviceId,
-           "version": version
-         }
-       };
-       try { _socket!.write("${jsonEncode(event)}\n"); } catch (_) {}
+        final bool autoReconnect = prefs.getBool('auto_reconnect') ?? true;
+
+        final event = {
+          "type": "pair_request",
+          "data": {
+            "device_name": deviceName,
+            "id": deviceId,
+            "version": version,
+            "auto_reconnect": autoReconnect,
+          }
+        };
+       try { 
+         _socket!.add(ProtocolHandler.encodePacket(event)); 
+       } catch (_) {}
      }
    }
 
-  void _disconnect() {
+  void _disconnect({bool manual = false}) {
     _socket?.destroy();
-    _onDisconnect();
+    _onDisconnect(manual: manual);
   }
 
-  void _onDisconnect() {
+  void _onDisconnect({bool manual = false}) {
     if (mounted) {
-      if (_isConnected) {
-        // Only show screen if we were previously connected (not manual disconnect)
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (ctx) => DisconnectedScreen(
-              onReconnect: () => _connect(),
-            ),
-          ),
-        );
-      }
-      
       setState(() {
         _isConnected = false;
         _socket = null;
@@ -571,6 +645,7 @@ class _MainScreenState extends State<MainScreen> {
       });
        _hideNotification();
        FlutterBackgroundService().invoke("setAsBackground");
+       _setInterceptVolume(false);
        if (_approvalStatus == "Trusted") {
          _updateServiceStatus("searching for pc...");
          setState(() => _serverName = null);
@@ -578,10 +653,20 @@ class _MainScreenState extends State<MainScreen> {
      }
   }
 
-  void _resetConnectionState() async {
+  void _resetConnectionState({bool notifyServer = false}) async {
+    if (notifyServer && _socket != null) {
+      try {
+        final event = {"type": "cancel_request"};
+        _socket!.add(ProtocolHandler.encodePacket(event));
+      } catch (_) {}
+    }
+    
     _approvalStatus = "Unknown";
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('approval_status');
+    // Ensure we disconnect the socket if we are resetting state
+    _socket?.destroy();
+    
     setState(() {
       _isConnected = false;
       _socket = null;
@@ -596,7 +681,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _showConnectedNotification() async {
     // We use the background service to manage the persistent notification
     // as it is more reliable for 'ongoing' services on Android.
-    FlutterBackgroundService().invoke("updateStatus", {"content": "Connected to PC"});
+    FlutterBackgroundService().invoke("updateStatus", {"content": "Connected to ${_serverName ?? 'PC'}"});
   }
 
   Future<void> _hideNotification() async {
@@ -655,6 +740,61 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  void _showMirrorRequestDialog(String deviceName, String deviceId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            const Icon(Icons.monitor, color: Colors.blueAccent),
+            const SizedBox(width: 12),
+            Text(AppLocalizations.of(context)!.mirroringRequest, style: const TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Text("'$deviceName' ${AppLocalizations.of(context)!.wantsToMirrorYourScreen}", style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _sendMirrorResponse(deviceId, false);
+            },
+            child: Text(AppLocalizations.of(context)!.deny, style: const TextStyle(color: Colors.redAccent)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _sendMirrorResponse(deviceId, true);
+            },
+            child: Text(AppLocalizations.of(context)!.allow),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _sendMirrorResponse(String deviceId, bool accepted) {
+    if (_socket != null) {
+      final event = {
+        "type": "mirror_response",
+        "data": {
+          "device_id": deviceId,
+          "accepted": accepted,
+        }
+      };
+      try {
+        _socket!.add(ProtocolHandler.encodePacket(event));
+      } catch (_) {}
+    }
+  }
+
+  void _showMirrorStatus(bool allowed, String message) {
+     _showError(message);
+  }
+
   Future<bool> _showExitConfirmation() async {
     return await showDialog(
       context: context,
@@ -663,14 +803,14 @@ class _MainScreenState extends State<MainScreen> {
         child: AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.white.withOpacity(0.1))),
-          title: const Text("Exit App", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: const Text("Are you sure you want to close Wayland Connect?", style: TextStyle(color: Colors.white70)),
+          title: Text(AppLocalizations.of(context)!.exitApp, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Text(AppLocalizations.of(context)!.exitConfirmation, style: const TextStyle(color: Colors.white70)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCEL", style: TextStyle(color: Colors.white38))),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(AppLocalizations.of(context)!.cancel, style: const TextStyle(color: Colors.white38))),
             TextButton(
               onPressed: () => Navigator.pop(context, true), 
               style: TextButton.styleFrom(backgroundColor: Colors.redAccent.withOpacity(0.1)),
-              child: const Text("EXIT", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+              child: Text(AppLocalizations.of(context)!.exit, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
             ),
           ],
         ),
@@ -694,7 +834,8 @@ class _MainScreenState extends State<MainScreen> {
           approvalStatus: _approvalStatus,
           isConnected: _isConnected,
           onConnect: _showConnectionDialog,
-          onReset: _resetConnectionState,
+          onReset: () => _resetConnectionState(notifyServer: true),
+          socket: _socket,
         ),
       );
     }
@@ -703,63 +844,68 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, constraints) {
         final bool isDesktop = constraints.maxWidth > 800;
         
-        // Use a local variable to ensure consistency during rebuilds
-        final int safeIndex = (_currentIndex >= 0 && _currentIndex < 4) ? _currentIndex : (_currentIndex == 4 ? 0 : 0);
+        // Navigation Mapping:
+        // 0: Touchpad
+        // 1: Keyboard
+        // 2: Media
+        // 3: Present
+        // 4: Desktop (Screen Share)
+        // 5: Settings
+        final int safeIndex = (_currentIndex >= 0 && _currentIndex <= 5) ? _currentIndex : 0;
 
         Widget? bottomBar;
-        if (!isDesktop && _currentIndex != 4) {
-          bottomBar = Container(
-            padding: const EdgeInsets.only(top: 10),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black54],
-              ),
-            ),
-            child: Theme(
-              data: Theme.of(context).copyWith(
-                navigationBarTheme: NavigationBarThemeData(
-                  indicatorColor: Colors.white,
-                  labelTextStyle: WidgetStateProperty.all(const TextStyle(color: Colors.white70, fontSize: 11)),
-                  iconTheme: WidgetStateProperty.all(const IconThemeData(color: Colors.white54)),
+        if (!isDesktop && _currentIndex != 5) { // 5 is Settings
+          bottomBar = Material(
+            color: Colors.transparent,
+            child: ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  width: double.infinity, // Ensure full width in landscape
+                  height: 90,
+                  padding: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                    ),
+                  ),
+                  child: Center( // Center content for better landscape look
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildNavButton(0, Icons.touch_app_outlined, Icons.touch_app, AppLocalizations.of(context)!.touchpad),
+                          _buildNavButton(1, Icons.keyboard_outlined, Icons.keyboard, AppLocalizations.of(context)!.keyboard),
+                          _buildNavButton(2, Icons.music_note_outlined, Icons.music_note, AppLocalizations.of(context)!.media),
+                          _buildNavButton(3, Icons.stars_outlined, Icons.stars, AppLocalizations.of(context)!.present),
+                          _buildNavButton(4, Icons.computer_rounded, Icons.computer, AppLocalizations.of(context)!.desktop),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              child: NavigationBar(
-                height: 70,
-                backgroundColor: Colors.transparent,
-                indicatorColor: Colors.white,
-                elevation: 0,
-                selectedIndex: safeIndex,
-                onDestinationSelected: (index) {
-                  if (index >= 0 && index < 4) {
-                    HapticFeedback.selectionClick();
-                    _onTabChanged(index);
-                  }
-                },
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.touch_app_outlined),
-                    selectedIcon: Icon(Icons.touch_app, color: Colors.black),
-                    label: 'Touchpad',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.keyboard_outlined),
-                    selectedIcon: Icon(Icons.keyboard, color: Colors.black),
-                    label: 'Keyboard',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.music_note_outlined),
-                    selectedIcon: Icon(Icons.music_note, color: Colors.black),
-                    label: 'Media',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.stars_outlined),
-                    selectedIcon: Icon(Icons.stars, color: Colors.black),
-                    label: 'Present',
-                  ),
-                ],
-              ),
+            ),
+          );
+        }
+
+        // --- DISCONNECTION OVERLAY ---
+        if (!_isConnected && _approvalStatus == "Trusted") {
+          return PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) async {
+              if (didPop) return;
+              final shouldExit = await _showExitConfirmation();
+              if (shouldExit) SystemNavigator.pop();
+            },
+            child: DisconnectedScreen(
+              onReconnect: _connect,
+              onReturnHome: () => _resetConnectionState(notifyServer: false),
+              lastDeviceName: _serverName,
             ),
           );
         }
@@ -768,8 +914,19 @@ class _MainScreenState extends State<MainScreen> {
           canPop: false,
           onPopInvokedWithResult: (didPop, result) async {
             if (didPop) return;
-            if (_currentIndex != 0) {
-              setState(() => _currentIndex = 0);
+            if (_navigationHistory.length > 1) {
+              setState(() {
+                _navigationHistory.removeLast();
+                _currentIndex = _navigationHistory.last;
+                _setInterceptVolume([2, 3].contains(_currentIndex));
+              });
+            } else if (_currentIndex != 0) {
+              setState(() {
+                _currentIndex = 0;
+                _navigationHistory.clear();
+                _navigationHistory.add(0);
+                _setInterceptVolume(false);
+              });
             } else {
               final shouldExit = await _showExitConfirmation();
               if (shouldExit) {
@@ -778,12 +935,17 @@ class _MainScreenState extends State<MainScreen> {
             }
           },
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             extendBodyBehindAppBar: true,
-            appBar: isDesktop ? null : AppBar(
-              backgroundColor: _isScrolled ? Colors.black.withOpacity(0.3) : Colors.transparent,
+            appBar: (isDesktop || _currentIndex == 5) ? null : AppBar(
+              key: ValueKey(_currentIndex), // FORCE REBUILD ON TAB CHANGE to clear stuck states
+              // Strict logic: Media (2), and Desktop (4) allow transparent/blur.
+              backgroundColor: ([2, 4].contains(_currentIndex) && _isScrolled) ? Colors.black.withOpacity(0.3) : Colors.transparent,
               elevation: 0,
+              scrolledUnderElevation: 0, // Prevent white tint on scroll
+              surfaceTintColor: Colors.transparent, // Prevent white tint on scroll
               toolbarHeight: 80,
-              flexibleSpace: _isScrolled
+              flexibleSpace: ([2, 4].contains(_currentIndex) && _isScrolled)
                   ? ClipRect(
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -791,32 +953,40 @@ class _MainScreenState extends State<MainScreen> {
                       ),
                     )
                   : null,
-              leading: _currentIndex == 4
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white70),
-                      onPressed: () => setState(() => _currentIndex = 0),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.link_off, color: Colors.white70),
-                      onPressed: () { _disconnect(); _resetConnectionState(); },
-                    ),
-              actions: [
-                if (_currentIndex != 4)
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                    onPressed: () => setState(() => _currentIndex = 4),
-                  ),
-                const SizedBox(width: 12),
-              ],
+          leading: _currentIndex == 5 // Settings Screen
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white70),
+                  onPressed: () {
+                    if (_navigationHistory.length > 1) {
+                      setState(() {
+                        _navigationHistory.removeLast();
+                        _currentIndex = _navigationHistory.last;
+                        _setInterceptVolume([2, 3].contains(_currentIndex));
+                      });
+                    } else {
+                      setState(() {
+                        _currentIndex = 0;
+                        _setInterceptVolume(false);
+                      });
+                    }
+                  },
+                )
+              : IconButton(
+                  icon: const Icon(Icons.link_off, color: Colors.white70),
+                  onPressed: () { _disconnect(manual: true); _resetConnectionState(); },
+                ),
+          actions: [
+            if (_currentIndex != 5)
+              IconButton(
+                icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+                onPressed: () => _onTabChanged(5),
+              ),
+            const SizedBox(width: 20),
+          ],
               centerTitle: true,
               title: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset('assets/images/app_logo.png', width: 40, height: 40, fit: BoxFit.cover),
-                  ),
-                  const SizedBox(width: 12),
                   _buildStatusDot(),
                 ],
               ),
@@ -828,10 +998,18 @@ class _MainScreenState extends State<MainScreen> {
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
+                    // Force transparent on non-Media tabs to prevent stickiness
+                    if (_currentIndex != 2) { // 2 = Media
+                       if (_isScrolled) setState(() => _isScrolled = false);
+                       return false;
+                    }
+
                     if (notification is ScrollUpdateNotification) {
-                      final scrolled = notification.metrics.pixels > 20;
-                      if (_isScrolled != scrolled) {
-                        setState(() => _isScrolled = scrolled);
+                      if (notification.metrics.axis == Axis.vertical) {
+                        final scrolled = notification.metrics.pixels > 20;
+                        if (_isScrolled != scrolled) {
+                          setState(() => _isScrolled = scrolled);
+                        }
                       }
                     }
                     return false;
@@ -839,40 +1017,32 @@ class _MainScreenState extends State<MainScreen> {
                   child: Stack(
                   children: [
                     IndexedStack(
-                      index: _currentIndex,
+                      index: safeIndex,
                       children: [
                         TouchpadScreen(socket: _socket),
                         KeyboardScreen(socket: _socket),
-                        MediaScreen(socket: _socket, socketStream: _socketStream),
-                        PointerScreen(socket: _socket),
-                        const SettingsScreen(),
+                        MediaScreen(socket: _socket, socketStream: _socketStream, isActiveTab: _currentIndex == 2, volumeStream: _volumeEventStream),
+                        PointerScreen(socket: _socket, isActiveTab: _currentIndex == 3, volumeStream: _volumeEventStream, zoomEnabled: _zoomEnabled),
+                        ScreenShareScreen(socket: _socket, socketStream: _socketStream),
+                        SettingsScreen(
+                          socket: _socket,
+                          onBack: () {
+                          if (_navigationHistory.length > 1) {
+                            setState(() {
+                              _navigationHistory.removeLast();
+                              _currentIndex = _navigationHistory.last;
+                              _setInterceptVolume([2, 3].contains(_currentIndex));
+                            });
+                          } else {
+                            setState(() {
+                              _currentIndex = 0;
+                              _setInterceptVolume(false);
+                            });
+                          }
+                        }),
                       ],
                     ),
-                    if (!_isConnected && _approvalStatus == "Trusted")
-                       Positioned(
-                         bottom: isDesktop ? 40 : 120, left: 20, right: 20,
-                         child: Container(
-                           padding: const EdgeInsets.all(12),
-                           decoration: BoxDecoration(
-                             color: Colors.redAccent.withOpacity(0.9), 
-                             borderRadius: BorderRadius.circular(16),
-                             boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]
-                           ),
-                           child: Row(
-                             children: [
-                               const Icon(Icons.link_off, color: Colors.white),
-                               const SizedBox(width: 12),
-                               const Expanded(child: Text("PC DISCONNECTED", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                               TextButton(
-                                 onPressed: _connect, 
-                                 style: TextButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Colors.white.withOpacity(0.2)),
-                                 child: const Text("RECONNECT", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11))
-                               ),
-                             ],
-                           ),
-                         ),
-                       ),
-                   ],
+                    ],
                   ),
                 ),
               ),
@@ -913,7 +1083,7 @@ class _MainScreenState extends State<MainScreen> {
                   children: [
                     _buildStatusDot(),
                     const SizedBox(width: 8),
-                    Text(_isConnected ? "CONNECTED" : "DISCONNECTED", style: TextStyle(fontSize: 10, color: _isConnected ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                    Text(_isConnected ? AppLocalizations.of(context)!.connected : AppLocalizations.of(context)!.disconnected, style: TextStyle(fontSize: 10, color: _isConnected ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
@@ -924,11 +1094,12 @@ class _MainScreenState extends State<MainScreen> {
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _SidebarItem(icon: Icons.touch_app_outlined, label: "Touchpad", selected: _currentIndex == 0, onTap: () => _onTabChanged(0)),
-                  _SidebarItem(icon: Icons.keyboard_outlined, label: "Keyboard", selected: _currentIndex == 1, onTap: () => _onTabChanged(1)),
-                  _SidebarItem(icon: Icons.music_note_outlined, label: "Media Control", selected: _currentIndex == 2, onTap: () => _onTabChanged(2)),
-                  _SidebarItem(icon: Icons.stars_outlined, label: "Presentation", selected: _currentIndex == 3, onTap: () => _onTabChanged(3)),
-                  _SidebarItem(icon: Icons.settings_outlined, label: "Settings", selected: _currentIndex == 4, onTap: () => _onTabChanged(4)),
+                  _SidebarItem(icon: Icons.touch_app_outlined, label: AppLocalizations.of(context)!.touchpad, selected: _currentIndex == 0, onTap: () => _onTabChanged(0)),
+                  _SidebarItem(icon: Icons.keyboard_outlined, label: AppLocalizations.of(context)!.keyboard, selected: _currentIndex == 1, onTap: () => _onTabChanged(1)),
+                  _SidebarItem(icon: Icons.music_note_outlined, label: AppLocalizations.of(context)!.mediaControl, selected: _currentIndex == 2, onTap: () => _onTabChanged(2)),
+                  _SidebarItem(icon: Icons.stars_outlined, label: AppLocalizations.of(context)!.presentation, selected: _currentIndex == 3, onTap: () => _onTabChanged(3)),
+                  _SidebarItem(icon: Icons.screenshot_monitor_outlined, label: AppLocalizations.of(context)!.screenShare, selected: _currentIndex == 4, onTap: () => _onTabChanged(4)),
+                  _SidebarItem(icon: Icons.settings_outlined, label: AppLocalizations.of(context)!.settings, selected: _currentIndex == 5, onTap: () => _onTabChanged(5)),
                 ],
               ),
             ),
@@ -943,8 +1114,8 @@ class _MainScreenState extends State<MainScreen> {
                 minimumSize: const Size(double.infinity, 48),
               ),
               icon: const Icon(Icons.link_off, size: 18),
-              label: const Text("Disconnect"),
-              onPressed: () { _disconnect(); _resetConnectionState(); },
+              label: Text(AppLocalizations.of(context)!.disconnect),
+              onPressed: () { _disconnect(manual: true); _resetConnectionState(); },
             ),
           ),
         ],
@@ -961,6 +1132,29 @@ class _MainScreenState extends State<MainScreen> {
         color: dotColor,
         shape: BoxShape.circle,
         boxShadow: [BoxShadow(color: dotColor.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)],
+      ),
+    );
+  }
+
+  Widget _buildNavButton(int index, IconData icon, IconData selectedIcon, String label) {
+    bool isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => _onTabChanged(index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(isSelected ? selectedIcon : icon, color: isSelected ? Colors.white : Colors.white38, size: 24),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.white24, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+          ],
+        ),
       ),
     );
   }

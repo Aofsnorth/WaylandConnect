@@ -1,29 +1,25 @@
+
 mod protocol;
 mod adapter;
 mod server;
 mod media_manager;
 mod pointer_manager;
+mod audio_analyzer;
+mod app_manager;
+mod screen_streamer;
+mod session_state;
+mod event_handler;
+mod tls_utils;
 
 use std::sync::Arc;
 use env_logger;
 use log::info;
 use crate::server::InputServer;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> anyhow::Result<()> {
-    // Initialize Logger to File
-    use std::fs::OpenOptions;
-    let log_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open("/tmp/wayland_connect_backend.log")
-        .unwrap();
-    
-    let target = env_logger::Target::Pipe(Box::new(log_file));
     env_logger::Builder::from_default_env()
-        .target(target)
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Debug)
         .init();
 
     info!("----------------------------------------------------------------");
@@ -39,12 +35,12 @@ async fn main() -> anyhow::Result<()> {
     // 3. Start Server
     let args: Vec<String> = std::env::args().collect();
     let port: u16 = if args.len() > 1 {
-        args[1].parse().unwrap_or(12345)
+        args[1].parse().unwrap_or(wc_core::constants::DEFAULT_SERVER_PORT)
     } else {
-        12345
+        wc_core::constants::DEFAULT_SERVER_PORT
     };
 
-    let server = InputServer::new(adapter_arc);
+    let server = InputServer::new(adapter_arc).await?;
     server.run(port).await?;
 
     Ok(())

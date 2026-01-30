@@ -1,0 +1,15 @@
+[package]
+name = "wc_codecs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wc_core = { path = "../core" }
+wc_common = { path = "../common" }
+anyhow = "1.0"
+tracing = "0.1"
+async-trait = "0.1"
+bytes = "1.5"
+
+# We will likely add ffmpeg-next or gstreamer here later
+# for now, keep it minimal to compile the structure

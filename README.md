@@ -21,10 +21,14 @@ Wayland Connect is a professional remote control and presentation tool tailor-ma
 ## 💎 Key Features
 
 - **Integrated Dashboard**: Monitor connection status, server IP, and connected devices in a sleek, modern interface.
+- **UDP Discovery**: Fast and automatic device detection—no more manual IP entry required.
 - **Air Mouse (Presentation Pointer)**: Use your phone's gyroscope as a laser pointer on your PC screen. Features multiple modes: Laser Dot, Ring, Hollow Frame, and more.
+- **Screen Mirroring**: Share your Android screen to your PC with low latency for presentations or monitoring.
 - **Precision Control**: Seamless cursor navigation, click gestures (using volume/power buttons as shortcuts), and smooth scrolling.
+- **Keyboard Control**: Type on your PC directly from your Android keyboard.
 - **Media Controller**: Control music and video players (MPV, Spotify, Browsers, etc.) directly from your palm.
-- **Security First**: A "Trusted Devices" system ensures only authorized devices can take control.
+- **Security First**: TLS 1.3 encryption for all communications.
+- **Trusted Devices**: Trust-On-First-Use (TOFU) certificate pinning prevents Man-in-the-Middle (MITM) attacks.
 - **Minimalist Overlay**: Beautiful, animated custom cursors on the Linux side for high-impact presentations.
 
 ## ⚙️ System Requirements
@@ -67,8 +71,10 @@ Download the latest APK from the [Releases](https://github.com/Aofsnorth/Wayland
 
 - **Backend**: Built with **Rust** for performance and safety (`rust_backend`).
 - **Overlay**: **Rust** utilizing `wayland-client` for low-level interaction (`wayland_pointer_overlay`).
+- **Screen Share**: **Rust** backend utilizing PipeWire and Portal (`wayland_share_screen`).
 - **Desktop UI**: Developed using **Flutter** (`wayland_connect_desktop`).
 - **Android App**: Developed using **Flutter** (`wayland_connect_android`).
+- **Security**: **TLS 1.3** and **SHA-256** fingerprinting for robust device verification.
 
 ## 📜 License
 This project is licensed under the [MIT License](LICENSE).
@@ -86,10 +92,14 @@ Wayland Connect adalah aplikasi *remote control* dan alat presentasi modern yang
 ## ✨ Fitur Utama
 
 - **Dashboard Terintegrasi**: Pantau status koneksi, IP Server, dan perangkat yang terhubung dalam satu tampilan premium.
+- **UDP Discovery**: Deteksi perangkat secara otomatis dan cepat—tidak perlu lagi memasukkan IP secara manual.
 - **Presentation Pointer (Air Mouse)**: Gunakan giroskop HP Anda sebagai *laser pointer* di layar PC. Dilengkapi dengan berbagai mode (Laser Dot, Ring, Hollow Frame, dll).
+- **Screen Mirroring**: Bagikan layar Android ke PC dengan latensi rendah untuk presentasi atau monitoring.
 - **Mouse & Gesture Control**: Navigasi kursor, klik (termasuk tombol volume & power sebagai shortcut), dan scroll dengan mulus.
+- **Keyboard Control**: Mengetik di PC langsung dari keyboard Android Anda.
 - **Media Controller**: Kendalikan pemutar musik/video (MPV, Spotify, Browser, dll) langsung dari genggaman.
-- **Security First**: Sistem *Trusted Devices* memastikan hanya perangkat yang Anda izinkan yang bisa mengendalikan PC.
+- **Security First**: Enkripsi TLS 1.3 untuk seluruh komunikasi.
+- **Trusted Devices**: Sistem *Trust-On-First-Use* (TOFU) untuk mencegah serangan Man-in-the-Middle (MITM).
 - **Minimalist Overlay**: Kursor khusus yang cantik dan animatif di sisi Linux untuk presentasi yang memukau.
 
 ## 🛠️ Persyaratan Sistem
@@ -132,6 +142,7 @@ Unduh APK terbaru dari halaman [Releases](https://github.com/Aofsnorth/WaylandCo
 
 - **Backend**: Ditulis menggunakan **Rust** (`rust_backend`).
 - **Overlay**: Ditulis menggunakan **Rust** + Crate `wayland-client` (`wayland_pointer_overlay`).
+- **Screen Share**: Backend **Rust** menggunakan PipeWire & Portal (`wayland_share_screen`).
 - **Desktop App**: Dibangun dengan **Flutter** (`wayland_connect_desktop`).
 - **Android App**: Dibangun dengan **Flutter** (`wayland_connect_android`).
 

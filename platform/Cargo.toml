@@ -1,0 +1,15 @@
+[package]
+name = "wc_platform"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wc_core = { path = "../core" }
+wc_common = { path = "../common" }
+anyhow = "1.0"
+async-trait = "0.1"
+tracing = "0.1"
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+input-linux = "0.7"

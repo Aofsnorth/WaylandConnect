@@ -9,6 +9,69 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'dart:async';
+import './utils/protocol.dart';
+import 'l10n/app_localizations.dart';
+import 'package:crypto/crypto.dart';
+
+// ignore: must_be_immutable
+class _SidebarItem extends StatelessWidget {
+  final bool isSmall;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SidebarItem({
+    required this.isSmall,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        hoverColor: Colors.white.withValues(alpha: 0.05),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+          padding: EdgeInsets.symmetric(vertical: 12, horizontal: isSmall ? 10 : 20),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: selected ? Border.all(color: Colors.white12) : Border.all(color: Colors.transparent),
+          ),
+          child: Row(
+            mainAxisAlignment: isSmall ? MainAxisAlignment.center : MainAxisAlignment.start,
+            children: [
+              Icon(icon, color: selected ? Colors.white : Colors.white38, size: 20),
+              if (!isSmall) ...[
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    label, 
+                    style: TextStyle(
+                      color: selected ? Colors.white : Colors.white38, 
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 Future<String> _getIconPath() async {
   try {
@@ -52,24 +115,64 @@ void main(List<String> args) async {
   runApp(const WaylandManagerApp());
 }
 
-class WaylandManagerApp extends StatelessWidget {
+class WaylandManagerApp extends StatefulWidget {
   const WaylandManagerApp({super.key});
+
+  static void setLocale(BuildContext context, Locale newLocale) {
+    _WaylandManagerAppState? state = context.findAncestorStateOfType<_WaylandManagerAppState>();
+    state?.setLocale(newLocale);
+  }
+
+  @override
+  State<WaylandManagerApp> createState() => _WaylandManagerAppState();
+}
+
+class _WaylandManagerAppState extends State<WaylandManagerApp> {
+  Locale? _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocale();
+  }
+
+  Future<void> _loadLocale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? languageCode = prefs.getString('language_code');
+    if (languageCode != null) {
+      setState(() {
+        _locale = Locale(languageCode);
+      });
+    }
+  }
+
+  void setLocale(Locale newLocale) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language_code', newLocale.languageCode);
+    setState(() {
+      _locale = newLocale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Wayland Connect',
+      title: 'WaylandConnect',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
+        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
         colorScheme: const ColorScheme.dark(
           primary: Colors.white,
           secondary: Colors.white54,
           surface: Color(0xFF121212),
         ),
         fontFamily: 'Roboto',
+        useMaterial3: true,
       ),
+      locale: _locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: const DashboardScreen(),
     );
   }
@@ -85,19 +188,22 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> with TrayListener, WindowListener {
   int _selectedIndex = 0; // 0: Dashboard, 1: Devices, 2: Security, 3: Settings
   bool _serviceActive = true;
-  SecureSocket? _socket;
+  Socket? _socket;
   Process? _backendProcess;
   Process? _overlayProcess;
   List<Map<String, dynamic>> _devices = [];
   bool _isConnected = false;
+  bool _zoomEnabled = false;
   Timer? _pollTimer;
+  final ProtocolHandler _protocolHandler = ProtocolHandler();
 
-  String _ipAddress = "Loading...";
+  String _ipAddress = "Loading..."; // Initial value, will be replaced by l10n in build if needed, but logic uses it for stats.
 
   // Mock Settings
   bool _startOnBoot = false;
   bool _minimizeToTray = true;
   bool _darkMode = true;
+  bool _autoConnect = true;
   bool _requireApproval = true;
   bool _encryptionEnabled = true;
   int _selectedMonitor = 0;
@@ -178,7 +284,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TrayListener, Wi
 [Desktop Entry]
 Type=Application
 Name=Wayland Connect
-Exec=wayland_connect_desktop --hidden
+Exec=wayland-connect --hidden
 Icon=com.arthenyx.wayland_connect
 Comment=Start Wayland Connect Server
 X-GNOME-Autostart-enabled=true
@@ -205,6 +311,7 @@ X-GNOME-Autostart-enabled=true
         _startOnBoot = prefs.getBool('start_on_boot') ?? false;
         _minimizeToTray = prefs.getBool('minimize_to_tray') ?? true;
         _darkMode = prefs.getBool('dark_mode') ?? true;
+        _autoConnect = prefs.getBool('auto_connect') ?? true;
       });
     }
   }
@@ -270,16 +377,16 @@ X-GNOME-Autostart-enabled=true
       items: [
         MenuItem(
           key: 'show_window',
-          label: 'Restore Window',
+          label: AppLocalizations.of(context)!.restoreWindow,
         ),
         MenuItem(
           key: 'hide_window',
-          label: 'Minimize Window',
+          label: AppLocalizations.of(context)!.minimizeWindow,
         ),
         MenuItem.separator(),
         MenuItem(
           key: 'exit_app',
-          label: 'Exit',
+          label: AppLocalizations.of(context)!.exit,
         ),
       ],
     );
@@ -320,77 +427,89 @@ X-GNOME-Autostart-enabled=true
 
   void _startBackendServer() async {
      try {
-       // Force kill any existing backend instances (zombies)
-       await Process.run('fuser', ['-k', '12345/tcp']);
-       await Process.run('pkill', ['-f', 'wayland_connect_backend']);
-       await Process.run('pkill', ['-f', 'wayland_pointer_overlay']); 
-       _backendProcess?.kill();
-       await Future.delayed(const Duration(milliseconds: 500)); 
-       
        int port = int.tryParse(_portController.text) ?? 12345;
+       
+       // Try to connect FIRST before doing anything
+       try {
+         final testSocket = await Socket.connect('127.0.0.1', port, timeout: const Duration(milliseconds: 500));
+         testSocket.destroy();
+         debugPrint("📡 Backend already running on port $port, skipping spawn.");
+         _connectToBackend();
+         return;
+       } catch (_) {
+         // Port is free or backend not responding, proceed with spawning
+       }
+
+       _backendProcess?.kill();
+       await Future.delayed(const Duration(milliseconds: 200)); 
+       
        final prefs = await SharedPreferences.getInstance();
        await prefs.setString('service_port', port.toString());
        
        // Detect Path
-       // 1. Check relative to executable (AppImage / Portable uses this)
        String exeDir = File(Platform.resolvedExecutable).parent.path;
        String backendPath = '$exeDir/wayland_connect_backend';
        String overlayPath = '$exeDir/wayland_pointer_overlay';
 
+       // Local Development Paths (Source Tree)
        if (!File(backendPath).existsSync()) {
-          // 2. Check /opt (Legacy/Global Install)
-          String optBackend = '/opt/wayland-connect/bin/wayland_connect_backend';
-          if (File(optBackend).existsSync()) {
-              backendPath = optBackend;
-              overlayPath = '/opt/wayland-connect/bin/wayland_pointer_overlay';
-          }
-       }
-
-       if (!File(backendPath).existsSync()) {
-          // 3. Fallbacks for local dev (Source Tree)
-          backendPath = '../rust_backend/target/release/wayland_connect_backend';
-          overlayPath = '../wayland_pointer_overlay/target/release/wayland_pointer_overlay';
-          
-          if (!File(backendPath).existsSync()) {
-             backendPath = '../rust_backend/target/debug/wayland_connect_backend';
-             overlayPath = '../wayland_pointer_overlay/target/debug/wayland_pointer_overlay';
-          }
-
-          if (!File(backendPath).existsSync()) {
-             // For running via 'flutter run' where CWD is project root
-             backendPath = 'rust_backend/target/release/wayland_connect_backend';
-             overlayPath = 'wayland_pointer_overlay/target/release/wayland_pointer_overlay';
-             
-             if (!File(backendPath).existsSync()) {
-                backendPath = 'rust_backend/target/debug/wayland_connect_backend';
-                overlayPath = 'wayland_pointer_overlay/target/debug/wayland_pointer_overlay'; 
-             }
+          final possiblePaths = [
+            'target/release/wayland_connect_backend',
+            'target/debug/wayland_connect_backend',
+            '../target/release/wayland_connect_backend',
+            '../target/debug/wayland_connect_backend',
+            'rust_backend/target/release/wayland_connect_backend',
+            'rust_backend/target/debug/wayland_connect_backend',
+            '../rust_backend/target/release/wayland_connect_backend',
+            '../rust_backend/target/debug/wayland_connect_backend',
+            'build/linux/x64/debug/bundle/wayland_connect_backend',
+            'build/linux/x64/release/bundle/wayland_connect_backend',
+            '/opt/wayland-connect/bin/wayland_connect_backend',
+          ];
+          for (final p in possiblePaths) {
+            if (File(p).existsSync()) {
+              backendPath = p;
+              overlayPath = p.replaceAll('wayland_connect_backend', 'wayland_pointer_overlay');
+              break;
+            }
           }
        }
 
        debugPrint("🚀 Attempting to launch Backend from: $backendPath");
        
-       // Start Backend
        if (File(backendPath).existsSync()) {
           _backendProcess = await Process.start(backendPath, [port.toString()]);
-          debugPrint("✅ Backend process started (PID: ${_backendProcess?.pid})");
-          
           _backendProcess?.stdout.transform(utf8.decoder).listen((data) => debugPrint("[BACKEND]: $data"));
           _backendProcess?.stderr.transform(utf8.decoder).listen((data) => debugPrint("[BACKEND ERROR]: $data"));
           
-          Future.delayed(const Duration(milliseconds: 800), _connectToBackend);
+          // Optimized: Poll for connection instead of hard sleep
+          int attempts = 0;
+          while (attempts < 15) { // Try for 3 seconds (15 * 200ms)
+            await Future.delayed(const Duration(milliseconds: 200));
+            try {
+              final test = await SecureSocket.connect(
+                '127.0.0.1', 
+                port, 
+                timeout: const Duration(milliseconds: 200),
+                onBadCertificate: (_) => true,
+              );
+              test.destroy();
+              _connectToBackend(); // Success!
+              break;
+            } catch (_) {
+              attempts++;
+            }
+          }
        } else {
-          debugPrint("❌ CRITICAL: Backend binary NOT FOUND at $backendPath");
+      debugPrint("❌ CRITICAL: Backend binary NOT FOUND.");
+          // Attempt connection anyway in case it was started externally just now
+          _connectToBackend();
        }
 
-       // Start Overlay
        if (File(overlayPath).existsSync()) {
-          Process.start(overlayPath, []).then((p) {
-             _overlayProcess = p;
-             debugPrint("✅ Overlay process started (PID: ${p.pid})");
-          });
-       } else {
-          debugPrint("⚠️ Overlay binary NOT FOUND at $overlayPath");
+          _overlayProcess = await Process.start(overlayPath, []);
+          _overlayProcess?.stdout.transform(utf8.decoder).listen((data) => debugPrint("[OVERLAY]: $data"));
+          _overlayProcess?.stderr.transform(utf8.decoder).listen((data) => debugPrint("[OVERLAY ERROR]: $data"));
        }
 
      } catch (e) {
@@ -404,27 +523,80 @@ X-GNOME-Autostart-enabled=true
     int port = int.tryParse(_portController.text) ?? 12345;
     
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final expectedFingerprint = prefs.getString('backend_fingerprint');
+
       _socket = await SecureSocket.connect(
         '127.0.0.1', 
         port,
-        onBadCertificate: (cert) => true, // Self-signed support
+        onBadCertificate: (certificate) {
+          final hash = sha256.convert(certificate.der).toString().toUpperCase();
+          final formattedHash = hash.replaceAllMapped(RegExp(r".{2}"), (match) => "${match.group(0)}:").substring(0, hash.length + (hash.length / 2).floor() - 1);
+          
+          if (expectedFingerprint != null && expectedFingerprint.isNotEmpty) {
+             if (expectedFingerprint == formattedHash) {
+                return true;
+             } else {
+                debugPrint("🚨 BACKEND IDENTITY CHANGED! Expected: $expectedFingerprint, Got: $formattedHash");
+                return false;
+             }
+          }
+          // First time, pin it
+          prefs.setString('backend_fingerprint', formattedHash);
+          debugPrint("📌 Pinned Local Backend Fingerprint: $formattedHash");
+          return true;
+        },
       );
       if (mounted) setState(() => _isConnected = true);
       
-      utf8.decoder.bind(_socket!).transform(const LineSplitter()).listen(
-        (line) {
-          if (line.isEmpty) return;
+      // Mark this connection as a dashboard so it receives broadcasts
+      _socket!.add(ProtocolHandler.encodePacket({'type': 'register_dashboard'}));
+      
+      _socket!.listen(
+        (data) {
           try {
-            final json = jsonDecode(line);
-            if (json['devices'] != null) {
-               if (mounted) {
-                 setState(() {
-                   _devices = List<Map<String, dynamic>>.from(json['devices']);
-                 });
-               }
+            final packets = _protocolHandler.process(data);
+            for (final packet in packets) {
+              if (packet is! Map) continue;
+              
+              final type = packet['type']?.toString();
+              final d = packet['data'];
+              
+              if (type == 'status_response') {
+                final devices = d['devices'];
+                final zoomEnabled = d['zoom_enabled'] as bool?;
+                if (mounted) {
+                  setState(() {
+                    if (devices != null) {
+                      _devices = List<Map<String, dynamic>>.from(
+                        (devices as List).map((x) => Map<String, dynamic>.from(x as Map))
+                      );
+                    }
+                    if (zoomEnabled != null) {
+                      _zoomEnabled = zoomEnabled;
+                    }
+                  });
+                }
+              } else if (type == 'mirror_request') {
+                final deviceId = d['device_id']?.toString();
+                final deviceName = d['device_name']?.toString() ?? "Unknown Device";
+                if (deviceId != null) {
+                  windowManager.show();
+                  windowManager.focus();
+                  _showMirrorRequestDialog(deviceId, deviceName);
+                }
+              } else if (type == 'auto_reconnect_request') {
+                final deviceId = d['device_id']?.toString();
+                final deviceName = d['device_name']?.toString() ?? "Unknown Device";
+                if (deviceId != null) {
+                  windowManager.show();
+                  windowManager.focus();
+                  _showAutoReconnectRequestDialog(deviceId, deviceName);
+                }
+              }
             }
           } catch (e) {
-            debugPrint("JSON Decode Error in Desktop: $e | Line: $line");
+            debugPrint("Protocol Decode Error in Desktop: $e");
           }
         },
         onDone: () { if (mounted) setState(() => _isConnected = false); },
@@ -435,32 +607,152 @@ X-GNOME-Autostart-enabled=true
       _refreshStatus();
       _syncMonitor();
     } catch (e) {
-    if (mounted) setState(() => _isConnected = false);
+      if (mounted) setState(() => _isConnected = false);
     }
   }
 
   void _syncMonitor() {
     if (_socket != null) {
-      _socket!.write('{"type":"set_pointer_monitor", "data": {"monitor": $_selectedMonitor}}\n');
+      final event = {
+        "type": "set_pointer_monitor",
+        "data": {"monitor": _selectedMonitor}
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
+    }
+  }
+
+  void _showMirrorRequestDialog(String deviceId, String deviceName) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: "Mirror Request",
+      barrierColor: Colors.black.withValues(alpha: 0.8),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, anim1, anim2) {
+        return DraggablePopup(
+          title: AppLocalizations.of(context)!.mirroringRequest,
+          content: "'$deviceName' ${AppLocalizations.of(context)!.wantsToShareScreen}",
+          onAccept: () {
+            Navigator.pop(context);
+            _sendMirrorResponse(deviceId, true);
+          },
+          onReject: () {
+            Navigator.pop(context);
+            _sendMirrorResponse(deviceId, false);
+          },
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = CurvedAnimation(parent: anim1, curve: Curves.easeOutBack);
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10 * anim1.value, sigmaY: 10 * anim1.value),
+          child: ScaleTransition(
+            scale: curve,
+            child: FadeTransition(
+              opacity: anim1,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendMirrorResponse(String deviceId, bool accepted) {
+    if (_socket != null) {
+      final event = {
+        "type": "mirror_response",
+        "data": {
+          "device_id": deviceId,
+          "accepted": accepted,
+        }
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
+    }
+  }
+
+  void _showAutoReconnectRequestDialog(String deviceId, String deviceName) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: "Auto Reconnect Request",
+      barrierColor: Colors.black.withValues(alpha: 0.8),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, anim1, anim2) {
+        return DraggablePopup(
+          title: "Auto-Reconnect", 
+          content: "'$deviceName' wants to enable auto-reconnect for future sessions.",
+          onAccept: () {
+            Navigator.pop(context);
+            _sendAutoReconnectResponse(deviceId, true);
+          },
+          onReject: () {
+            Navigator.pop(context);
+            _sendAutoReconnectResponse(deviceId, false);
+          },
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = CurvedAnimation(parent: anim1, curve: Curves.easeOutBack);
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10 * anim1.value, sigmaY: 10 * anim1.value),
+          child: ScaleTransition(
+            scale: curve,
+            child: FadeTransition(
+              opacity: anim1,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendAutoReconnectResponse(String deviceId, bool accepted) {
+    if (_socket != null) {
+      _socket!.add(ProtocolHandler.encodePacket({
+        'type': 'auto_reconnect_response',
+        'data': {'id': deviceId, 'accepted': accepted}
+      }));
+      _refreshStatus();
+    }
+  }
+
+  void _sendPCStopMirroring(String deviceId) {
+    if (_socket != null) {
+      _socket!.add(ProtocolHandler.encodePacket({
+        'type': 'pc_stop_mirroring',
+        'data': {'id': deviceId}
+      }));
+      _refreshStatus();
     }
   }
 
   void _refreshStatus() {
     if (_socket != null) {
-      try { _socket!.write('{"type":"get_status", "data": null}\n'); } catch (_) {}
+      final event = {"type": "get_status"};
+      try { _socket!.add(ProtocolHandler.encodePacket(event)); } catch (_) {}
     }
   }
 
   void _approveDevice(String id) {
     if (_socket != null) {
-      _socket!.write('{"type":"approve_device", "data": {"id": "$id"}}\n');
+      final event = {
+        "type": "approve_device",
+        "data": {"id": id}
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
       _refreshStatus();
     }
   }
   
   void _rejectDevice(String id) {
      if (_socket != null) {
-      _socket!.write('{"type":"reject_device", "data": {"id": "$id"}}\n');
+      final event = {
+        "type": "reject_device",
+        "data": {"id": id}
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
       _refreshStatus();
     }
   }
@@ -480,7 +772,7 @@ X-GNOME-Autostart-enabled=true
                 image: AssetImage('assets/images/background.png'),
                 fit: BoxFit.cover,
                 colorFilter: ColorFilter.mode(
-                  _darkMode ? Colors.black.withOpacity(0.8) : Colors.white.withOpacity(0.1), 
+                  _darkMode ? Colors.black.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.1), 
                   _darkMode ? BlendMode.darken : BlendMode.lighten
                 ),
               ),
@@ -496,7 +788,7 @@ X-GNOME-Autostart-enabled=true
                       curve: Curves.easeInOut,
                       width: sidebarWidth,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         border: const Border(right: BorderSide(color: Colors.white10)),
                       ),
                       child: Column(
@@ -534,11 +826,11 @@ X-GNOME-Autostart-enabled=true
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.dashboard_outlined, label: "Dashboard", selected: _selectedIndex == 0, onTap: () => setState(() => _selectedIndex = 0)),
-                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.devices_other_outlined, label: "Paired Devices", selected: _selectedIndex == 1, onTap: () => setState(() => _selectedIndex = 1)),
-                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.block, label: "Blocked Devices", selected: _selectedIndex == 4, onTap: () => setState(() => _selectedIndex = 4)),
-                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.security_outlined, label: "Security & Trust", selected: _selectedIndex == 2, onTap: () => setState(() => _selectedIndex = 2)),
-                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.settings_outlined, label: "Settings", selected: _selectedIndex == 3, onTap: () => setState(() => _selectedIndex = 3)),
+                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.dashboard_outlined, label: AppLocalizations.of(context)!.dashboard, selected: _selectedIndex == 0, onTap: () => setState(() => _selectedIndex = 0)),
+                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.devices_other_outlined, label: AppLocalizations.of(context)!.pairedDevices, selected: _selectedIndex == 1, onTap: () => setState(() => _selectedIndex = 1)),
+                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.block, label: AppLocalizations.of(context)!.blockedDevices, selected: _selectedIndex == 4, onTap: () => setState(() => _selectedIndex = 4)),
+                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.security_outlined, label: AppLocalizations.of(context)!.securityTrust, selected: _selectedIndex == 2, onTap: () => setState(() => _selectedIndex = 2)),
+                                  _SidebarItem(isSmall: isSmallScreen, icon: Icons.settings_outlined, label: AppLocalizations.of(context)!.settings, selected: _selectedIndex == 3, onTap: () => setState(() => _selectedIndex = 3)),
                                 ],
                               ),
                             ),
@@ -556,12 +848,12 @@ X-GNOME-Autostart-enabled=true
                                   children: [
                                     const Icon(Icons.info_outline, size: 10, color: Colors.white38),
                                     const SizedBox(width: 6),
-                                    Text("v1.0.4", style: TextStyle(
+                                    Text("v1.0.0", style: TextStyle(
                                       color: Colors.white70, 
                                       fontSize: 10,
                                       shadows: [
-                                        Shadow(color: Colors.blueAccent.withOpacity(0.8), blurRadius: 15),
-                                        Shadow(color: Colors.purpleAccent.withOpacity(0.5), blurRadius: 25),
+                                        Shadow(color: Colors.blueAccent.withValues(alpha: 0.8), blurRadius: 15),
+                                        Shadow(color: Colors.purpleAccent.withValues(alpha: 0.5), blurRadius: 25),
                                       ]
                                     )),
                                   ],
@@ -632,6 +924,19 @@ X-GNOME-Autostart-enabled=true
     }
   }
 
+  void _toggleAutoConnect(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('auto_connect', value);
+    setState(() => _autoConnect = value);
+    
+    if (_socket != null) {
+      _socket!.add(ProtocolHandler.encodePacket({
+        "type": "set_auto_connect",
+        "data": {"enabled": value}
+      }));
+    }
+  }
+
   Widget _buildContent() {
     switch (_selectedIndex) {
       case 0: return _buildDashboard();
@@ -646,9 +951,9 @@ X-GNOME-Autostart-enabled=true
   Widget _buildDashboard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Align(
         alignment: Alignment.topLeft,
@@ -672,22 +977,29 @@ X-GNOME-Autostart-enabled=true
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const FittedBox(
+                            FittedBox(
                               fit: BoxFit.scaleDown,
                                 child: Text(
-                                "Dashboard", 
-                                style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1.0)
+                                AppLocalizations.of(context)!.dashboard, 
+                                style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -1.0)
                               ),
                             ),
-                            Text(
-                              "System Control Center",
-                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14, fontWeight: FontWeight.w500),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                AppLocalizations.of(context)!.systemControlCenter,
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14, fontWeight: FontWeight.w500),
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      _StatusBadge(active: _serviceActive),
+                      Flexible(flex: 0, child: Row(
+                        children: [
+                          _StatusBadge(active: _serviceActive, isConnected: _isConnected),
+                        ],
+                      )),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -700,10 +1012,10 @@ X-GNOME-Autostart-enabled=true
                       // Calculate width based on constraints
                       // If very narrow: 1 column. If medium: 2 columns. If wide: 4 columns.
                       ...[
-                        _StatCard(title: "Server IP", value: _ipAddress, icon: Icons.wifi_tethering, highlight: true),
-                        _StatCard(title: "Port", value: _portController.text, icon: Icons.lan),
-                        _StatCard(title: "Paired", value: "${_devices.where((d) => d['status'] == 'Trusted').length}", icon: Icons.devices),
-                        _StatCard(title: "Request", value: "${_devices.where((d) => d['status'] == 'Pending').length}", icon: Icons.verified_user_outlined),
+                        _StatCard(title: AppLocalizations.of(context)!.serverIp, value: _ipAddress == "Loading..." ? AppLocalizations.of(context)!.loading : _ipAddress, icon: Icons.wifi_tethering, highlight: true),
+                        _StatCard(title: AppLocalizations.of(context)!.port, value: _portController.text, icon: Icons.lan),
+                        _StatCard(title: AppLocalizations.of(context)!.paired, value: "${_devices.where((d) => d['status'] == 'Trusted').length}", icon: Icons.devices),
+                        _StatCard(title: AppLocalizations.of(context)!.request, value: "${_devices.where((d) => d['status'] == 'Pending').length}", icon: Icons.verified_user_outlined),
                       ].map((card) {
                         double itemWidth;
                         double availableWidth = constraints.maxWidth - (horizontalPadding * 2);
@@ -725,7 +1037,7 @@ X-GNOME-Autostart-enabled=true
                   const SizedBox(height: 32),
                   
                   // Recent Activity Section
-                  const Text("Recent Activity", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5)),
+                  Text(AppLocalizations.of(context)!.recentActivity, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5)),
                   const SizedBox(height: 12),
                   
                   _devices.isEmpty
@@ -736,15 +1048,15 @@ X-GNOME-Autostart-enabled=true
                               Container(
                                 padding: const EdgeInsets.all(24),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.03),
+                                  color: Colors.white.withValues(alpha: 0.03),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(Icons.history, size: 48, color: Colors.white.withOpacity(0.1)),
+                                child: Icon(Icons.history, size: 48, color: Colors.white.withValues(alpha: 0.1)),
                               ),
                               const SizedBox(height: 20),
-                              const Text("No Recent Connections", style: TextStyle(color: Colors.white24, fontSize: 15, fontWeight: FontWeight.w500)),
+                              Text(AppLocalizations.of(context)!.noRecentConnections, style: const TextStyle(color: Colors.white24, fontSize: 15, fontWeight: FontWeight.w500)),
                               const SizedBox(height: 8),
-                              const Text("Connect your Android device to get started", style: TextStyle(color: Colors.white10, fontSize: 13)),
+                              Text(AppLocalizations.of(context)!.connectAndroidToGetStarted, style: const TextStyle(color: Colors.white10, fontSize: 13)),
                             ],
                           ),
                         )
@@ -755,41 +1067,49 @@ X-GNOME-Autostart-enabled=true
                           itemBuilder: (context, index) {
                             final device = _devices[index];
                             return _DeviceRow(
+                              id: device['id'],
                               name: device['name'] ?? "Unknown Device",
                               details: "${device['ip']} • ${device['id']}",
                               status: device['status'],
+                              isMirroring: device['is_mirroring'] ?? false,
                               actions: [
+                                if (device['is_mirroring'] == true) ...[
+                                  TextButton(
+                                    onPressed: () => _sendPCStopMirroring(device['id']),
+                                    child: const Text("STOP", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
                                 if (device['status'] == 'Pending') ...[
                                   TextButton(
                                     onPressed: () => _approveDevice(device['id']),
-                                    child: const Text("Approve", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    child: Text(AppLocalizations.of(context)!.approve, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
                                   TextButton(
                                     onPressed: () => _rejectDevice(device['id']),
-                                    child: const Text("Reject", style: TextStyle(color: Colors.white38)),
+                                    child: Text(AppLocalizations.of(context)!.reject, style: const TextStyle(color: Colors.white38)),
                                   ),
                                 ] else if (device['status'] == 'Trusted') ...[
                                   TextButton(
                                     onPressed: () => _rejectDevice(device['id']),
-                                    child: const Text("Remove", style: TextStyle(color: Colors.white60)),
+                                    child: Text(AppLocalizations.of(context)!.remove, style: const TextStyle(color: Colors.white60)),
                                   ),
                                   TextButton(
                                     onPressed: () => _blockDevice(device['id']),
-                                    child: const Text("Block", style: TextStyle(color: Colors.redAccent)),
+                                    child: Text(AppLocalizations.of(context)!.block, style: const TextStyle(color: Colors.redAccent)),
                                   ),
                                 ] else if (device['status'] == 'Declined') ...[
                                   TextButton(
                                     onPressed: () => _approveDevice(device['id']),
-                                    child: const Text("Re-pair", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                                    child: Text(AppLocalizations.of(context)!.rePair, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
                                   ),
                                   TextButton(
                                     onPressed: () => _unblockDevice(device['id']),
-                                    child: const Text("Delete", style: TextStyle(color: Colors.white38)),
+                                    child: Text(AppLocalizations.of(context)!.delete, style: const TextStyle(color: Colors.white38)),
                                   ),
                                 ] else if (device['status'] == 'Blocked') ...[
                                   TextButton(
                                     onPressed: () => _unblockDevice(device['id']),
-                                    child: const Text("Unblock", style: TextStyle(color: Colors.amberAccent)),
+                                    child: Text(AppLocalizations.of(context)!.unblock, style: const TextStyle(color: Colors.amberAccent)),
                                   ),
                                 ]
                               ],
@@ -811,31 +1131,41 @@ X-GNOME-Autostart-enabled=true
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Paired Devices", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.pairedDevices, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        const Text("Manage all devices that have access to this PC.", style: TextStyle(color: Colors.white54)),
+        Text(AppLocalizations.of(context)!.manageDevicesAccess, style: const TextStyle(color: Colors.white54)),
         const SizedBox(height: 40),
         Expanded(
           child: _devices.where((d) => d['status'] == 'Trusted').isEmpty 
-          ? const Center(child: Text("No paired devices", style: TextStyle(color: Colors.white38)))
+          ? Center(child: Text(AppLocalizations.of(context)!.noPairedDevices, style: const TextStyle(color: Colors.white38)))
           : ListView.builder(
             itemCount: _devices.where((d) => d['status'] == 'Trusted').length,
             itemBuilder: (context, index) {
               final device = _devices.where((d) => d['status'] == 'Trusted').toList()[index];
               return _DeviceRow(
+                id: device['id'],
                 name: device['name'] ?? "Unknown",
                 details: "ID: ${device['id']}\nIP: ${device['ip']}",
                 status: device['status'] ?? "Unknown",
+                isMirroring: device['is_mirroring'] ?? false,
                 actions: [
+                   if (device['is_mirroring'] == true) ...[
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
+                        child: const Text("STOP MIRRORING"),
+                        onPressed: () => _sendPCStopMirroring(device['id']),
+                      ),
+                      const SizedBox(width: 8),
+                   ],
                    OutlinedButton(
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.white54, side: const BorderSide(color: Colors.white10)),
-                      child: const Text("Remove"),
+                      child: Text(AppLocalizations.of(context)!.remove),
                       onPressed: () => _rejectDevice(device['id']),
                    ),
                    const SizedBox(width: 8),
                    OutlinedButton(
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                      child: const Text("Block"),
+                      child: Text(AppLocalizations.of(context)!.block),
                       onPressed: () => _blockDevice(device['id']),
                    )
                 ],
@@ -851,18 +1181,19 @@ X-GNOME-Autostart-enabled=true
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Blocked Devices", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.blockedDevices, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        const Text("Devices that are permanently blocked from connecting.", style: TextStyle(color: Colors.white54)),
+        Text(AppLocalizations.of(context)!.permanentlyBlocked, style: const TextStyle(color: Colors.white54)),
         const SizedBox(height: 40),
         Expanded(
           child: _devices.where((d) => d['status'] == 'Blocked').isEmpty 
-          ? const Center(child: Text("No blocked devices", style: TextStyle(color: Colors.white38)))
+          ? Center(child: Text(AppLocalizations.of(context)!.noBlockedDevices, style: const TextStyle(color: Colors.white38)))
           : ListView.builder(
             itemCount: _devices.where((d) => d['status'] == 'Blocked').length,
             itemBuilder: (context, index) {
               final device = _devices.where((d) => d['status'] == 'Blocked').toList()[index];
               return _DeviceRow(
+                id: device['id'] ?? "",
                 name: device['name'] ?? "Unknown",
                 details: "ID: ${device['id']}\nIP: ${device['ip']}",
                 status: device['status'] ?? "Unknown",
@@ -870,7 +1201,7 @@ X-GNOME-Autostart-enabled=true
                    FilledButton.icon(
                       style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
                       icon: const Icon(Icons.lock_open, size: 16),
-                      label: const Text("Unblock"),
+                      label: Text(AppLocalizations.of(context)!.unblock),
                       onPressed: () => _unblockDevice(device['id']),
                    )
                 ],
@@ -884,14 +1215,22 @@ X-GNOME-Autostart-enabled=true
   
   void _blockDevice(String id) {
     if (_socket != null) {
-      _socket!.write('{"type":"block_device", "data": {"id": "$id"}}\n');
+      final event = {
+        "type": "block_device",
+        "data": {"id": id}
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
       _refreshStatus();
     }
   }
 
   void _unblockDevice(String id) {
      if (_socket != null) {
-      _socket!.write('{"type":"unblock_device", "data": {"id": "$id"}}\n');
+      final event = {
+        "type": "unblock_device",
+        "data": {"id": id}
+      };
+      _socket!.add(ProtocolHandler.encodePacket(event));
       _refreshStatus();
     }
   }
@@ -902,7 +1241,7 @@ X-GNOME-Autostart-enabled=true
       _rejectDevice(device['id']);
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Revoked access for ${trustedDevices.length} devices"))
+      SnackBar(content: Text("${AppLocalizations.of(context)!.revokedAccessFor} ${trustedDevices.length} ${AppLocalizations.of(context)!.devices}"))
     );
   }
 
@@ -910,25 +1249,25 @@ X-GNOME-Autostart-enabled=true
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Security & Trust", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.securityTrust, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 40),
-        _buildSwitch("Require Approval for New Devices", "Always ask before pairing a new device.", _requireApproval, (v) => setState(() => _requireApproval = v)),
+        _buildSwitch(AppLocalizations.of(context)!.requireApprovalNew, AppLocalizations.of(context)!.alwaysAskPairing, _requireApproval, (v) => setState(() => _requireApproval = v)),
         // Encryption is mandatory and enabled by default in backend v1.0.3+
         const SizedBox(height: 24),
-        const Text("Access Control", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.accessControl, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.withOpacity(0.3))),
+          decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.withValues(alpha: 0.3))),
           child: Row(
             children: [
-              Icon(Icons.warning, color: Colors.red),
+              const Icon(Icons.warning, color: Colors.red),
               const SizedBox(width: 16),
-              const Expanded(child: Text("Revoke All Access\nDisconnect all devices and clear trust database.", style: TextStyle(color: Colors.red))),
+              Expanded(child: Text("${AppLocalizations.of(context)!.revokeAllAccess}\n${AppLocalizations.of(context)!.revokeAllDetails}", style: const TextStyle(color: Colors.red))),
               OutlinedButton(
                 onPressed: _revokeAllAccess,
                 style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                child: const Text("REVOKE ALL"),
+                child: Text(AppLocalizations.of(context)!.revokeAllBtn),
               )
             ],
           ),
@@ -940,15 +1279,52 @@ X-GNOME-Autostart-enabled=true
   Widget _buildSettings() {
     return ListView(
       children: [
-        const Text("Settings", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.settings, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
         const SizedBox(height: 40),
-        _buildSwitch("Start on Boot", "Automatically start server when you login.", _startOnBoot, _setAutoStart),
-        _buildSwitch("Minimize to Tray", "Keep running in background when closed.", _minimizeToTray, (v) => setState(() => _minimizeToTray = v)),
-        _buildSwitch("Dark Mode", "Use dark theme for dashboard.", _darkMode, (v) => setState(() => _darkMode = v)),
+        _buildSwitch(AppLocalizations.of(context)!.startOnBoot, AppLocalizations.of(context)!.startOnBootDetails, _startOnBoot, _setAutoStart),
+        _buildSwitch(AppLocalizations.of(context)!.minimizeToTray, AppLocalizations.of(context)!.minimizeToTrayDetails, _minimizeToTray, (v) => setState(() => _minimizeToTray = v)),
+        _buildSwitch(AppLocalizations.of(context)!.darkMode, AppLocalizations.of(context)!.darkModeDetails, _darkMode, (v) => setState(() => _darkMode = v)),
+        _buildSwitch(AppLocalizations.of(context)!.autoConnect, AppLocalizations.of(context)!.autoConnectDetails, _autoConnect, _toggleAutoConnect),
+        _buildSwitch(AppLocalizations.of(context)!.enableZoom, AppLocalizations.of(context)!.enableZoomDetails, _zoomEnabled, (v) {
+          setState(() => _zoomEnabled = v);
+          if (_socket != null) {
+            _socket!.add(ProtocolHandler.encodePacket({
+              "type": "set_zoom_enabled",
+              "data": {"enabled": v}
+            }));
+          }
+        }),
         const SizedBox(height: 24),
-        const Text("Pointer Overlay", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.language, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: Localizations.localeOf(context).languageCode,
+              dropdownColor: const Color(0xFF1E1E1E),
+              isExpanded: true,
+              style: const TextStyle(color: Colors.white),
+              items: [
+                DropdownMenuItem(value: 'en', child: Text(AppLocalizations.of(context)!.english)),
+                DropdownMenuItem(value: 'id', child: Text(AppLocalizations.of(context)!.indonesian)),
+              ],
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  WaylandManagerApp.setLocale(context, Locale(newValue));
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(AppLocalizations.of(context)!.pointerOverlay, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        const Text("Select which monitor the laser pointer should appear on.", style: TextStyle(color: Colors.white54, fontSize: 13)),
+        Text(AppLocalizations.of(context)!.selectMonitorDetails, style: const TextStyle(color: Colors.white54, fontSize: 13)),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -963,13 +1339,13 @@ X-GNOME-Autostart-enabled=true
               isExpanded: true,
               style: const TextStyle(color: Colors.white),
               items: _monitors.isEmpty 
-              ? const [DropdownMenuItem(value: 0, child: Text("Detecting Monitors..."))]
+              ? [DropdownMenuItem(value: 0, child: Text(AppLocalizations.of(context)!.detectingMonitors))]
               : _monitors.asMap().entries.map((entry) {
                   int idx = entry.key;
                   Display d = entry.value;
                   return DropdownMenuItem(
                     value: idx,
-                    child: Text("Monitor $idx: ${d.name} (${d.size.width.toInt()}x${d.size.height.toInt()})"),
+                    child: Text("${AppLocalizations.of(context)!.monitor} $idx: ${d.name} (${d.size.width.toInt()}x${d.size.height.toInt()})"),
                   );
                 }).toList(),
               onChanged: (val) async {
@@ -984,7 +1360,7 @@ X-GNOME-Autostart-enabled=true
           ),
         ),
         const SizedBox(height: 32),
-        const Text("Server Configuration", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.serverConfiguration, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         TextField(
           controller: _portController,
@@ -995,11 +1371,11 @@ X-GNOME-Autostart-enabled=true
           ],
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
-            labelText: "Service Port",
+            labelText: AppLocalizations.of(context)!.servicePort,
             labelStyle: const TextStyle(color: Colors.white54),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white24)),
-            errorText: _portController.text.isEmpty ? "Port cannot be empty" : null,
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
+            errorText: _portController.text.isEmpty ? AppLocalizations.of(context)!.portEmptyError : null,
           ),
           onChanged: (v) => setState(() {}),
         ),
@@ -1007,34 +1383,34 @@ X-GNOME-Autostart-enabled=true
         FilledButton.icon(
           onPressed: _portController.text.isEmpty ? null : () => _startBackendServer(),
           icon: const Icon(Icons.restart_alt),
-          label: const Text("Restart Service & Apply Port"),
+          label: Text(AppLocalizations.of(context)!.restartServiceApply),
           style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
         ),
         const SizedBox(height: 48),
-        const Text("System Update", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(AppLocalizations.of(context)!.systemUpdate, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.02),
+            color: Colors.white.withValues(alpha: 0.02),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white10),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Checking for updates ensures you have the latest features and security fixes.", style: TextStyle(color: Colors.white54, fontSize: 13)),
+              Text(AppLocalizations.of(context)!.updateDetails, style: const TextStyle(color: Colors.white54, fontSize: 13)),
               const SizedBox(height: 24),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        final url = Uri.parse("https://github.com/arthenyx/WaylandConnect/releases/latest");
+                        final url = Uri.parse("https://github.com/Aofsnorth/WaylandConnect/releases/latest");
                         await Process.run('xdg-open', [url.toString()]);
                       },
                       icon: const Icon(Icons.system_update_alt),
-                      label: const Text("Check for Updates"),
+                      label: Text(AppLocalizations.of(context)!.checkForUpdates),
                       style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20), foregroundColor: Colors.white, side: const BorderSide(color: Colors.white24)),
                     ),
                   ),
@@ -1044,11 +1420,11 @@ X-GNOME-Autostart-enabled=true
                       onPressed: () async {
                         // For direct update, we could try running git pull and install.sh
                         // but opening the repo is safer for now as we don't know where it's cloned.
-                        final url = Uri.parse("https://github.com/arthenyx/WaylandConnect");
+                        final url = Uri.parse("https://github.com/Aofsnorth/WaylandConnect");
                         await Process.run('xdg-open', [url.toString()]);
                       },
                       icon: const Icon(Icons.code),
-                      label: const Text("Github Repo"),
+                      label: Text(AppLocalizations.of(context)!.githubRepo),
                       style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20), backgroundColor: Colors.white, foregroundColor: Colors.black),
                     ),
                   ),
@@ -1085,85 +1461,7 @@ X-GNOME-Autostart-enabled=true
   }
 }
 
-class _SidebarItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool isSmall;
 
-  const _SidebarItem({required this.icon, required this.label, this.selected = false, required this.onTap, this.isSmall = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 24, vertical: 8),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: selected ? Colors.white : Colors.transparent, 
-          boxShadow: selected ? [
-             BoxShadow(color: Colors.white.withOpacity(0.2), blurRadius: 15, spreadRadius: 1),
-             BoxShadow(color: Colors.blueAccent.withOpacity(0.1), blurRadius: 25, spreadRadius: 2),
-          ] : [],
-        ),
-        child: isSmall 
-        ? InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-               height: 50,
-               alignment: Alignment.center,
-               child: Icon(
-                icon, 
-                color: selected ? Colors.black : Colors.white54,
-                size: 22
-               ),
-            ),
-          )
-        : ClipRect(
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                         Icon(
-                          icon, 
-                          color: selected ? Colors.black : Colors.white54,
-                          size: 20
-                        ),
-                        const SizedBox(width: 16),
-                        Text(
-                          label.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: selected ? Colors.black : Colors.white54,
-                            fontSize: 10,
-                            fontWeight: selected ? FontWeight.w900 : FontWeight.w500,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ),
-    );
-  }
-}
 
 class _StatCard extends StatelessWidget {
   final String title;
@@ -1187,12 +1485,12 @@ class _StatCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: highlight 
-                ? [Colors.blueAccent.withOpacity(0.12), Colors.blueAccent.withOpacity(0.04)]
+                ? [Colors.blueAccent.withValues(alpha: 0.12), Colors.blueAccent.withValues(alpha: 0.04)]
                 : [const Color(0xFF101010), const Color(0xFF080808)],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: highlight ? Colors.blueAccent.withOpacity(0.4) : Colors.white.withOpacity(0.05),
+              color: highlight ? Colors.blueAccent.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.05),
               width: 1.5,
             ),
           ),
@@ -1203,7 +1501,7 @@ class _StatCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: highlight ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.02),
+                  color: highlight ? Colors.blueAccent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.02),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: highlight ? Colors.blueAccent : Colors.white54, size: 32),
@@ -1212,7 +1510,7 @@ class _StatCard extends StatelessWidget {
               Text(title, 
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)
               ),
               const SizedBox(height: 4),
               FittedBox(
@@ -1236,16 +1534,20 @@ class _StatCard extends StatelessWidget {
 }
 
 class _DeviceRow extends StatelessWidget {
+  final String id;
   final String name;
   final String details;
   final String status;
   final List<Widget> actions;
+  final bool isMirroring;
 
   const _DeviceRow({
+    required this.id,
     required this.name,
     required this.details,
     required this.status,
     required this.actions,
+    this.isMirroring = false,
   });
 
   @override
@@ -1257,18 +1559,17 @@ class _DeviceRow extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool showLabels = constraints.maxWidth > 600;
         
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF080808).withOpacity(isDeclined ? 0.5 : 1.0),
+            color: const Color(0xFF080808).withValues(alpha: isDeclined ? 0.5 : 1.0),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isPending ? Colors.amber.withOpacity(0.2) 
-                   : (isBlocked ? Colors.red.withOpacity(0.2) 
-                   : (isDeclined ? Colors.white10 : Colors.white.withOpacity(0.05)))
+              color: isPending ? Colors.amber.withValues(alpha: 0.2) 
+                   : (isBlocked ? Colors.red.withValues(alpha: 0.2) 
+                   : (isDeclined ? Colors.white10 : Colors.white.withValues(alpha: 0.05)))
             ),
           ),
           child: Row(
@@ -1276,18 +1577,18 @@ class _DeviceRow extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isPending ? Colors.amber.withOpacity(0.1) 
-                         : (isBlocked ? Colors.red.withOpacity(0.1) 
-                         : (isDeclined ? Colors.white.withOpacity(0.02) : Colors.white.withOpacity(0.03))),
+                    color: isPending ? Colors.amber.withValues(alpha: 0.1) 
+                         : (isBlocked ? Colors.red.withValues(alpha: 0.1) 
+                         : (isDeclined ? Colors.white.withValues(alpha: 0.02) : Colors.white.withValues(alpha: 0.03))),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     isPending ? Icons.warning_amber_rounded 
                     : (isBlocked ? Icons.block 
-                    : (isDeclined ? Icons.history : Icons.smartphone)), 
+                    : (isDeclined ? Icons.cancel : Icons.smartphone)), 
                     color: isPending ? Colors.amber 
                          : (isBlocked ? Colors.red 
-                         : (isDeclined ? Colors.white24 : Colors.white)), 
+                         : (isDeclined ? Colors.red : Colors.white)), 
                     size: 20
                   ),
                 ),
@@ -1330,8 +1631,21 @@ class _DeviceRow extends StatelessWidget {
                     Text(details, 
                       maxLines: 1, 
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)
+                      style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)
                     ),
+                    if (isMirroring) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.cast_connected, color: Colors.greenAccent, size: 12),
+                          const SizedBox(width: 8),
+                          Text(
+                            "SCREEN MIRRORING ACTIVE",
+                            style: TextStyle(color: Colors.greenAccent.withValues(alpha: 0.7), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1340,8 +1654,6 @@ class _DeviceRow extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: actions.map((action) {
-                  // If screen is narrow, we could try to reduce button padding or use icon buttons
-                  // but for now Wrap is a good safety net.
                   return action;
                 }).toList(),
               ),
@@ -1355,19 +1667,34 @@ class _DeviceRow extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final bool active;
-  const _StatusBadge({required this.active});
+  final bool isConnected;
+  const _StatusBadge({required this.active, required this.isConnected});
 
   @override
   Widget build(BuildContext context) {
+    Color mainColor = Colors.red;
+    String text = "SERVICE STOPPED";
+    bool showGlow = active;
+
+    if (active) {
+      if (isConnected) {
+        mainColor = Colors.white;
+        text = "SERVICE ACTIVE";
+      } else {
+        mainColor = Colors.amberAccent;
+        text = "SEARCHING BACKEND...";
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: active ? Colors.white.withOpacity(0.05) : Colors.red.withOpacity(0.1),
+        color: mainColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: active ? Colors.white24 : Colors.red.withOpacity(0.3)),
-        boxShadow: active ? [
-           BoxShadow(color: Colors.white.withOpacity(0.2), blurRadius: 10, spreadRadius: 1),
-           BoxShadow(color: Colors.blueAccent.withOpacity(0.3), blurRadius: 20, spreadRadius: 5),
+        border: Border.all(color: mainColor.withValues(alpha: 0.3)),
+        boxShadow: showGlow ? [
+           BoxShadow(color: mainColor.withValues(alpha: 0.2), blurRadius: 10, spreadRadius: 1),
+           if (isConnected) BoxShadow(color: Colors.blueAccent.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 5),
         ] : [],
       ),
       child: Row(
@@ -1377,22 +1704,22 @@ class _StatusBadge extends StatelessWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: active ? Colors.white : Colors.red,
+              color: mainColor,
               shape: BoxShape.circle,
-              boxShadow: active ? [
-                 BoxShadow(color: Colors.white.withOpacity(0.8), blurRadius: 8, spreadRadius: 2),
+              boxShadow: showGlow ? [
+                 BoxShadow(color: mainColor.withValues(alpha: 0.8), blurRadius: 8, spreadRadius: 2),
               ] : [],
             ),
           ),
           const SizedBox(width: 10),
           Text(
-            active ? "SERVICE ACTIVE" : "SERVICE STOPPED",
+            text,
             style: TextStyle(
-              color: active ? Colors.white : Colors.red,
+              color: mainColor,
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
-              shadows: active ? [
+              shadows: (active && isConnected) ? [
                  Shadow(color: Colors.blueAccent, blurRadius: 10),
               ] : [],
             ),
@@ -1415,9 +1742,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Text(
         label,
@@ -1427,6 +1754,194 @@ class _StatusChip extends StatelessWidget {
           fontWeight: FontWeight.w900,
           letterSpacing: 0.5,
         ),
+      ),
+    );
+  }
+}
+
+class DraggablePopup extends StatefulWidget {
+  final String title;
+  final String content;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const DraggablePopup({
+    super.key,
+    required this.title,
+    required this.content,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  @override
+  State<DraggablePopup> createState() => _DraggablePopupState();
+}
+
+class _DraggablePopupState extends State<DraggablePopup> {
+  Offset? _position; 
+  final double _width = 380;
+  final double _estimatedHeight = 240; 
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_position == null) {
+      final size = MediaQuery.of(context).size;
+      _position = Offset((size.width - _width) / 2, (size.height - _estimatedHeight) / 2);
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    if (_position == null) return const SizedBox.shrink();
+    
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned(
+            left: _position!.dx,
+            top: _position!.dy,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanUpdate: (details) {
+                setState(() {
+                  final screenSize = MediaQuery.of(context).size;
+                  
+                  double newX = _position!.dx + details.delta.dx;
+                  double newY = _position!.dy + details.delta.dy;
+        
+                  const double bottomBarHeight = 100.0;
+                  final double horizontalLimit = (screenSize.width - _width).clamp(0.0, double.infinity);
+                  final double verticalLimit = (screenSize.height - _estimatedHeight - bottomBarHeight).clamp(0.0, double.infinity);
+        
+                  _position = Offset(
+                    newX.clamp(0.0, horizontalLimit),
+                    newY.clamp(0.0, verticalLimit),
+                  );
+                });
+              },
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: _width,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF151515).withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 40,
+                        offset: const Offset(0, 10),
+                      ),
+                      BoxShadow(
+                        color: Colors.blueAccent.withValues(alpha: 0.2),
+                        blurRadius: 30,
+                        spreadRadius: -10,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.blueAccent.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.cast_connected_rounded, color: Colors.blueAccent, size: 24),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "SCREEN SHARE REQUEST",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 2,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      "SECURE LINK PENDING",
+                                      style: TextStyle(
+                                        color: Colors.blueAccent,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        widget.content,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          height: 1.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: widget.onReject,
+                              icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
+                              label: const Text("DECLINE", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: widget.onAccept,
+                              icon: const Icon(Icons.check_rounded, size: 18),
+                              label: const Text("APPROVE", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                foregroundColor: Colors.white,
+                                elevation: 8,
+                                shadowColor: Colors.blueAccent.withValues(alpha: 0.4),
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

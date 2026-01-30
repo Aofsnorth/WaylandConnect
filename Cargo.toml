@@ -1,7 +1,17 @@
 [workspace]
 members = [
     "rust_backend",
-    "wayland_pointer_overlay"
+    "wayland_pointer_overlay",
+    "wayland_share_screen",
+    "core",
+    "common",
+    "config",
+    "capture",
+    "codecs",
+    "transport",
+    "processing",
+    "platform",
+    "apps/daemon"
 ]
 resolver = "2"
 

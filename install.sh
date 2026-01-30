@@ -1,89 +1,95 @@
 #!/bin/bash
-# WaylandConnect Auto-Installer
-# One-command installation script for Linux
-
 set -e
 
-INSTALL_DIR="/usr/local/bin"
-SERVICE_NAME="waylandconnect"
-CONFIG_DIR="$HOME/.config/waylandconnect"
-UDEV_RULES="/etc/udev/rules.d/99-waylandconnect-uinput.rules"
-SYSTEMD_SERVICE="/etc/systemd/user/${SERVICE_NAME}.service"
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-echo "╔════════════════════════════════════════╗"
-echo "║   WaylandConnect Installer v1.0.0      ║"
-echo "║   Remote Control for Linux Wayland     ║"
-echo "╚════════════════════════════════════════╝"
-echo ""
+INSTALL_DIR="/opt/wayland-connect"
+BIN_DIR="$INSTALL_DIR/bin"
+ASSETS_DIR="$INSTALL_DIR/assets"
 
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-   echo "⚠️  Please do NOT run as root. The script will request sudo when needed."
-   exit 1
-fi
+echo -e "${GREEN}🔧 Installing Wayland Connect...${NC}"
 
-# Step 1: Build everything
-echo "📦 Building project components..."
+# 1. Check dependencies
+echo "📦 Checking dependencies..."
+DEPS=("cargo" "flutter" "make")
+for dep in "${DEPS[@]}"; do
+    if ! command -v $dep &> /dev/null; then
+        echo -e "${RED}❌ $dep not found.${NC} Please install it first."
+        exit 1
+    fi
+done
 
-echo "🦀 Building Rust backend..."
-cd rust_backend && cargo build --release && cd ..
-
-echo "🎨 Building Wayland Overlay..."
-cd wayland_pointer_overlay && cargo build --release && cd ..
-
-echo "💙 Building Flutter Desktop App..."
-cd wayland_connect_desktop && flutter build linux --release && cd ..
-
-# Step 2: Install into /opt
-echo "📋 Installing to /opt/wayland-connect (requires sudo)..."
-OPT_DIR="/opt/wayland-connect"
-sudo mkdir -p "$OPT_DIR/bin"
-sudo cp rust_backend/target/release/wayland_connect_backend "$OPT_DIR/bin/"
-sudo cp wayland_pointer_overlay/target/release/wayland_pointer_overlay "$OPT_DIR/bin/"
-
-# Copy Flutter Bundle
-FLUTTER_BUNDLE="wayland_connect_desktop/build/linux/x64/release/bundle"
-sudo cp "$FLUTTER_BUNDLE/wayland_connect_desktop" "$OPT_DIR/bin/"
-sudo cp -r "$FLUTTER_BUNDLE/lib" "$OPT_DIR/bin/"
-sudo cp -r "$FLUTTER_BUNDLE/data" "$OPT_DIR/bin/"
-
-# Symlink
-sudo ln -sf "$OPT_DIR/bin/wayland_connect_desktop" "$INSTALL_DIR/wayland-connect"
-
-# Step 3: Create config directory
-echo "📁 Creating config directory..."
-mkdir -p "$CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/trusted_devices"
-
-# Step 4: Install udev rules
-echo "⚙️  Installing udev rules (requires sudo)..."
-sudo tee "$UDEV_RULES" > /dev/null << 'EOF'
-KERNEL=="uinput", MODE="0666", GROUP="input", OPTIONS+="static_node=uinput"
-SUBSYSTEM=="input", ATTRS{name}=="WaylandConnect Virtual Mouse", ENV{ID_INPUT}="1", ENV{ID_INPUT_MOUSE}="1", TAG+="uaccess"
-EOF
-
+# 2. Setup Udev Rule for UInput
+echo "🛡️ Setting up uinput permissions..."
+echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-wayland-connect-uinput.rules > /dev/null
+sudo usermod -aG input $USER
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# Step 5: Install Desktop Entry
-echo "🖥️  Creating desktop shortcut..."
-sudo tee /usr/share/applications/wayland-connect.desktop > /dev/null << EOF
+# 3. Build Components
+echo -e "${BLUE}🏗️ Building Rust Backend...${NC}"
+cd rust_backend && cargo build --release && cd ..
+
+echo -e "${BLUE}🎨 Building Wayland Overlay...${NC}"
+cd wayland_pointer_overlay && cargo build --release && cd ..
+
+echo -e "${BLUE}💙 Building Flutter Desktop App...${NC}"
+cd wayland_connect_desktop && flutter build linux --release && cd ..
+
+# 4. Install Binaries and Assets
+echo "🚀 Installing to $INSTALL_DIR..."
+sudo mkdir -p "$BIN_DIR"
+sudo mkdir -p "$ASSETS_DIR"
+
+sudo cp rust_backend/target/release/wayland_connect_backend "$BIN_DIR/"
+sudo cp wayland_pointer_overlay/target/release/wayland_pointer_overlay "$BIN_DIR/"
+sudo cp -r wayland_connect_desktop/build/linux/x64/release/bundle/* "$INSTALL_DIR/"
+
+# Create symlink for easier access
+sudo ln -sf "$INSTALL_DIR/wayland_connect_desktop" "/usr/local/bin/wayland-connect"
+
+# 5. Create Desktop Entry
+echo "🖥️ Creating Desktop Entry..."
+# Install icon to system icons directory
+sudo mkdir -p /usr/share/icons/hicolor/512x512/apps
+sudo cp wayland_connect_desktop/assets/images/app_icon.png /usr/share/icons/hicolor/512x512/apps/wayland-connect.png
+sudo gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+
+cat <<EOF | sudo tee /usr/share/applications/wayland-connect.desktop > /dev/null
 [Desktop Entry]
 Name=Wayland Connect
-Comment=Control Wayland from your Android device
-Exec=$OPT_DIR/bin/wayland_connect_desktop
-Icon=$OPT_DIR/bin/data/flutter_assets/assets/images/app_icon.png
+Comment=Remote control and presentation tool for Wayland
+Exec=/usr/local/bin/wayland-connect
+Icon=wayland-connect
 Terminal=false
 Type=Application
-Categories=Utility;RemoteAccess;
+Categories=Utility;RemoteControl;
 EOF
 
-# Step 6: Load uinput module
-echo "🔌 Loading uinput kernel module..."
-sudo modprobe uinput
-echo "uinput" | sudo tee -a /etc/modules-load.d/uinput.conf > /dev/null
+# 6. Create Systemd User Service (Backend)
+echo "⚙️ Creating Systemd User Service..."
+mkdir -p ~/.config/systemd/user/
+cat <<EOF > ~/.config/systemd/user/wayland-connect.service
+[Unit]
+Description=Wayland Connect Backend Service
+After=network.target
 
-echo ""
-echo "✅ Installation complete!"
-echo "🎉 You can now launch 'Wayland Connect' from your app menu or terminal."
-echo ""
+[Service]
+ExecStart=$BIN_DIR/wayland_connect_backend
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable wayland-connect.service
+
+echo -e "${GREEN}✅ Installation Complete!${NC}"
+echo "You can now launch Wayland Connect from your application menu."
+echo -e "${GREEN}Note: You may need to logout and login again for group permissions to apply.${NC}"
