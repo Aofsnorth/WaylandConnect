@@ -516,12 +516,14 @@ class _PointerScreenState extends State<PointerScreen> with TickerProviderStateM
           'mode': _currentMode,
           'pitch': _pitch,
           'roll': _roll,
-          'size': _pointerSize + (math.sin(_particleController.value * math.pi * 2 * _pulseSpeed) * 0.3 * _pulseIntensity * _pointerSize).clamp(-(_pointerSize * 0.5), 10.0),
+          'size': _pointerSize, // Send RAW size, let PC handle pulse
           'color': '#${_pointerColor.value.toRadixString(16).padLeft(8, '0')}',
           'has_image': _customImagePath != null,
           'particle_type': _particleType,
           'zoom_scale': _zoomScale,
           'stretch_factor': _stretchFactor,
+          'pulse_speed': _pulseSpeed,
+          'pulse_intensity': _pulseIntensity,
         }
       };
       try {

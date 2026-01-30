@@ -1465,7 +1465,7 @@ X-GNOME-Autostart-enabled=true
         Center(
           child: Column(
             children: [
-              Text("WAYLAND CONNECT v1.0.1.1", style: TextStyle(color: Colors.white.withOpacity(0.1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2)),
+              Text("WAYLAND CONNECT v1.0.1", style: TextStyle(color: Colors.white.withOpacity(0.1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2)),
               const SizedBox(height: 8),
               Text("DEVELOPED BY ARTHENYX", style: TextStyle(color: Colors.white.withOpacity(0.05), fontSize: 8, letterSpacing: 1)),
             ],

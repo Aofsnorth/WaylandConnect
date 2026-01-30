@@ -367,9 +367,9 @@ impl EventHandler {
                 };
                 self.send_packet(&response, tx_h).await;
             },
-            InputEvent::PointerData { active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image } => {
-                debug!("🖱️ Received PointerData: active={}, mode={}, pitch={}, roll={}", active, mode, pitch, roll);
-                self.pointer_manager.update(device_ip, active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image);
+            InputEvent::PointerData { active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image, pulse_speed, pulse_intensity } => {
+                debug!("🖱️ Received PointerData: active={}, mode={}, pitch={}, roll={}, speed={}", active, mode, pitch, roll, pulse_speed);
+                self.pointer_manager.update(device_ip, active, mode, pitch, roll, size, color, zoom_scale, particle_type, stretch_factor, has_image, pulse_speed, pulse_intensity);
             },
             InputEvent::TestOverlaySequence => {
                 self.pointer_manager.run_test_sequence(device_ip);

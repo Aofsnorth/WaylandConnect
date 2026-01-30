@@ -19,6 +19,8 @@ struct SinglePointerData {
     stretch: f32,
     has_image: bool,
     zoom_enabled: bool,
+    pulse_speed: f32,
+    pulse_intensity: f32,
 }
 
 struct PointerManagerState {
@@ -73,9 +75,9 @@ impl PointerManager {
                             if (d.target_y - d.current_y).abs() < 0.0001 { d.current_y = d.target_y; }
 
                             // Send Packet
-                            // Format: "DEVICE_ID|x,y,mode,size,color,zoom,particle,has_image,stretch"
-                            let msg = format!("{}|{:.4},{:.4},{},{:.2},{},{:.2},{},{},{:.2}", 
-                                id, d.current_x, d.current_y, d.mode, d.size, d.color, d.zoom, d.particle, if d.has_image { 1 } else { 0 }, d.stretch);
+                            // Format: "DEVICE_ID|x,y,mode,size,color,zoom,particle,has_image,stretch,pulse_speed,pulse_intensity"
+                            let msg = format!("{}|{:.4},{:.4},{},{:.2},{},{:.2},{},{},{:.2},{:.2},{:.2}", 
+                                id, d.current_x, d.current_y, d.mode, d.size, d.color, d.zoom, d.particle, if d.has_image { 1 } else { 0 }, d.stretch, d.pulse_speed, d.pulse_intensity);
                             
                             let _ = send_socket.send_to(msg.as_bytes(), wc_core::constants::POINTER_OVERLAY_ADDR);
                         }
@@ -94,7 +96,7 @@ impl PointerManager {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn update(&self, device_id: &str, active: bool, mode: i32, pitch: f32, roll: f32, size: f32, color: String, zoom: f32, particle: i32, stretch: f32, has_image: bool) {
+    pub fn update(&self, device_id: &str, active: bool, mode: i32, pitch: f32, roll: f32, size: f32, color: String, zoom: f32, particle: i32, stretch: f32, has_image: bool, pulse_speed: f32, pulse_intensity: f32) {
         let mut state = match self.state.lock() {
             Ok(s) => s,
             Err(_) => return,
@@ -114,6 +116,8 @@ impl PointerManager {
             stretch: 1.0,
             has_image: false,
             zoom_enabled: false,
+            pulse_speed: 1.0,
+            pulse_intensity: 0.0,
         });
 
         let mode_changed = data.mode != mode;
@@ -129,6 +133,8 @@ impl PointerManager {
         data.particle = particle;
         data.stretch = stretch;
         data.has_image = has_image;
+        data.pulse_speed = pulse_speed;
+        data.pulse_intensity = pulse_intensity;
         
         // Update Targets (Input Feed)
         if active {

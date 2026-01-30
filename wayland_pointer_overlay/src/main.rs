@@ -30,6 +30,8 @@ struct SinglePointerAnimState {
     particle: i32,
     stretch: f64,
     zoom: f64,
+    pulse_speed: f64,
+    pulse_intensity: f64,
 }
 
 struct SinglePointerState {
@@ -45,6 +47,8 @@ struct SinglePointerState {
     monitor_index: i32,
     anim: SinglePointerAnimState,
     test_mode: bool,
+    target_pulse_speed: f32,
+    target_pulse_intensity: f32,
 }
 
 struct MultiPointerState {
@@ -131,6 +135,27 @@ fn draw_pointer(ctx: &Context, s: &SinglePointerAnimState, screen_w: f64, screen
     let glow = s.glow_intensity;
     let (r, g, b, a) = s.color;
 
+    let mut width = s.width;
+    let mut height = s.height;
+    let mut radius = s.radius;
+    let mut stroke_width = s.stroke_width;
+
+    // Apply Pulse (Visual Only)
+    if s.pulse_intensity > 0.01 {
+        static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = START_TIME.get_or_init(std::time::Instant::now);
+        let elapsed = start.elapsed().as_secs_f64();
+
+        let pulse = (elapsed * std::f64::consts::PI * 2.0 * s.pulse_speed).sin();
+        let anim_size = 1.0 + (pulse * 0.3 * s.pulse_intensity).clamp(-0.5, 2.0);
+        
+        width *= anim_size;
+        height *= anim_size;
+        radius *= anim_size;
+        stroke_width *= anim_size;
+    }
+
+
     if opacity < 0.001 { return; }
     
     // Debug logging for zoom (Disabled for production multi-pointer or moved to per-pointer logic if needed)
@@ -156,12 +181,12 @@ fn draw_pointer(ctx: &Context, s: &SinglePointerAnimState, screen_w: f64, screen
              let (m_w, m_h, m_r) = if s.mode == 6 {
                  (screen_w * 0.75, screen_h * 0.75, 40.0) // Very large lens
              } else {
-                 (s.width, s.height, s.radius)
+                 (width, height, radius)
              };
 
-             let punch_width = (m_w - s.stroke_width * 1.5).max(0.0);
-             let punch_height = (m_h - s.stroke_width * 1.5).max(0.0);
-             let punch_radius = (m_r - s.stroke_width * 0.75).max(0.0);
+             let punch_width = (m_w - stroke_width * 1.5).max(0.0);
+             let punch_height = (m_h - stroke_width * 1.5).max(0.0);
+             let punch_radius = (m_r - stroke_width * 0.75).max(0.0);
              draw_manifestation(ctx, s.mode, s.particle, px, py, punch_width, punch_height, punch_radius, 1.0, custom_image);
              ctx.clip();
              
@@ -283,7 +308,7 @@ fn draw_pointer(ctx: &Context, s: &SinglePointerAnimState, screen_w: f64, screen
             // Fade out the trail
             let alpha = (1.0 - (i as f64 / count as f64)) * 0.6 * opacity * a;
             // Taper the width
-            let width = s.width * 0.4 * (1.0 - (i as f64 / count as f64) * 0.8);
+            let width = width * 0.4 * (1.0 - (i as f64 / count as f64) * 0.8);
             
             ctx.set_source_rgba(r, g, b, alpha);
             ctx.set_line_width(width.max(1.0));
@@ -581,6 +606,11 @@ fn main() {
                 }
 
                 pointer.anim.glow_intensity = 0.8 + 0.2 * (now.elapsed().as_secs_f64() * 5.0).sin().abs();
+                
+                // PULSE ANIMATION LOGIC
+                // Interpolate speed and intensity
+                pointer.anim.pulse_speed = damp(pointer.anim.pulse_speed, pointer.target_pulse_speed as f64, 40.0, dt);
+                pointer.anim.pulse_intensity = damp(pointer.anim.pulse_intensity, pointer.target_pulse_intensity as f64, 40.0, dt);
             } // This is the closing brace for the `for` loop.
             
             s.capture.set_exclusion_rect(has_zoom);
@@ -626,8 +656,11 @@ fn main() {
                                 x: 0.5, y: 0.5, mode: 0, width: 40.0, height: 40.0, radius: 20.0,
                                 stroke_width: 2.0, fill_alpha: 1.0, opacity: 0.0, trail: Vec::new(),
                                 glow_intensity: 1.0, color: (1.0, 1.0, 1.0, 1.0), particle: 0, stretch: 1.0, zoom: 1.0,
+                                pulse_speed: 1.0, pulse_intensity: 0.0,
                             },
                             test_mode: false,
+                            target_pulse_speed: 1.0,
+                            target_pulse_intensity: 0.0,
                         });
 
                         if payload == "STOP" {
@@ -727,8 +760,12 @@ fn main() {
                                             clear_img = true;
                                         }
                                     }
-                                    if parts.len() >= 9 {
+                                    if parts.len() >= 11 {
                                         pointer.target_stretch = parts[8].trim().parse().unwrap_or(1.0);
+                                        pointer.target_pulse_speed = parts[9].trim().parse().unwrap_or(1.0);
+                                        pointer.target_pulse_intensity = parts[10].trim().parse().unwrap_or(0.0);
+                                    } else if parts.len() >= 9 {
+                                         pointer.target_stretch = parts[8].trim().parse().unwrap_or(1.0);
                                     }
                                 }
                             }

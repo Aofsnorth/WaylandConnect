@@ -58,6 +58,10 @@ pub enum InputEvent {
         stretch_factor: f32,
         #[serde(default)]
         has_image: bool,
+        #[serde(default = "default_pulse_speed")]
+        pulse_speed: f32,
+        #[serde(default)]
+        pulse_intensity: f32,
     },
     
     // Presentation Slide Control
@@ -125,6 +129,7 @@ fn default_stretch() -> f32 { 1.0 }
 fn default_width() -> u32 { 854 }
 fn default_height() -> u32 { 480 }
 fn default_fps() -> u32 { 15 }
+fn default_pulse_speed() -> f32 { 1.0 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MonitorInfo {
