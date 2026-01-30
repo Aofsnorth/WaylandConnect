@@ -171,7 +171,7 @@ jobs:
             wayland-connect-linux/Wayland_Connect-x86_64.AppImage
             wayland-connect-linux/wayland-connect-linux-x64.tar.gz
           name: Release ${{ github.ref_name }}
-          draft: false
+          draft: true
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
