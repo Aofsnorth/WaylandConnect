@@ -6,6 +6,8 @@
 ![Visitors](https://api.visitorbadge.io/api/visitors?path=Aofsnorth%2FWaylandConnect&label=PROJECT%20VIEWS&countColor=%23263238&style=for-the-badge)
 ![Made with Vibe Code](https://img.shields.io/badge/Made%20with-Vibe%20Code-purple?style=for-the-badge&logo=openai)
 
+### 📊 Repository Activity
+![Activity Graph](https://github-readme-activity-graph.vercel.app/graph?username=Aofsnorth&theme=react&bg_color=1f222e&color=697689&line=2196f3&point=f44336&area=true&hide_border=true)
 
 [English](#-english) | [Bahasa Indonesia](#-bahasa-indonesia)
 
